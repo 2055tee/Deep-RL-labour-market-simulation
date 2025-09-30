@@ -8,7 +8,10 @@ from mesa.datacollection import DataCollector
 class StudentAgent(Agent):
     """An agent that represents a student with a knowledge score and a learning style."""
     def __init__(self, unique_id, model, learning_style):
-        super().__init__(unique_id, model)
+        super().__init__(unique_id)
+        self.model = model
+        self.unique_id = unique_id
+        self.random = random.Random(self.unique_id)  # Seeded random for reproducibility.
         self.learning_style = learning_style
         # A knowledge score from 0 to 100, initialized randomly.
         self.knowledge_score = random.randint(0, 100)
@@ -52,6 +55,7 @@ class TutoringModel(Model):
         self.num_students = num_students
         self.self_study_gain = self_study_gain
         self.tutoring_efficiency = tutoring_efficiency
+        self.random = random.Random()  # Required by Mesa 3.x schedulers
         self.schedule = RandomActivation(self)
         self.running = True
 
