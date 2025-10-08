@@ -83,7 +83,6 @@ lineplot_component = make_plot_component(
 # --- Simulation setup ---
 simulator = ABMSimulator()
 model = TutoringModel(simulator=simulator)
-simulator.setup(model)
 
 page = SolaraViz(
     model,

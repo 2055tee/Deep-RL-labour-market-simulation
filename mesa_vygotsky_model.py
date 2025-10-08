@@ -38,6 +38,7 @@ class TutoringModel(mesa.Model):
     ):
         super().__init__()
         self.simulator = simulator
+        self.simulator.setup(self)
         self.random = random.Random()
         self.num_agents = N
         self.schedule = mesa.time.RandomActivation(self)
