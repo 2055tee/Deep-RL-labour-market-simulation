@@ -2,6 +2,7 @@ import mesa
 import pandas as pd
 from mesa_vygotsky_agents import StudentAgent # Import the agent file
 import random
+from mesa.space import SingleGrid
 
 # --- Helper Functions for Data Collection ---
 def get_avg_knowledge(model):
@@ -22,28 +23,47 @@ class TutoringModel(mesa.Model):
     """
     A model simulating peer tutoring based on Vygotsky's ZPD.
     """
-    def __init__(self, N, width=10, height=10):
+    def __init__(
+        self,
+        N=25,
+        max_knowledge_gain=0.5,
+        independent_study_rate=0.05,
+        internalization_rate=0.02,
+        zpd_spread_rate=0.01,
+        social_gain_h=1.0,
+        happiness_decay=0.05,
+        width=10,
+        height=10,
+        simulator=None,
+    ):
         super().__init__()
+        self.simulator = simulator
         self.random = random.Random()
         self.num_agents = N
         self.schedule = mesa.time.RandomActivation(self)
         self.running = True
-        
-        # Model Parameters (can be adjusted via interface)
-        self.max_knowledge_gain = 0.5    # Max knowledge increase in one session
-        self.independent_study_rate = 0.05 # Baseline knowledge gain (low effectiveness)
-        self.internalization_rate = 0.02 # How quickly potential becomes current knowledge
-        self.zpd_spread_rate = 0.01      # How quickly potential knowledge naturally grows
-        self.social_gain_h = 1.0         # Happiness boost from successful tutoring
-        self.happiness_decay = 0.05      # Natural decay of happiness
 
-        # Create agents
+        # Model Parameters (can be adjusted via interface)
+        self.max_knowledge_gain = max_knowledge_gain
+        self.independent_study_rate = independent_study_rate
+        self.internalization_rate = internalization_rate
+        self.zpd_spread_rate = zpd_spread_rate
+        self.social_gain_h = social_gain_h
+        self.happiness_decay = happiness_decay
+
+
+        # Create grid for visualization
+        self.grid = SingleGrid(10, 10, torus=False)
+
+        # Create agents and place them on the grid
         for i in range(self.num_agents):
-            # Give a range of initial knowledge levels (0 to 50) and potentials (0 to 70)
             k = self.random.uniform(10, 50)
-            p = self.random.uniform(k, 70) 
+            p = self.random.uniform(k, 70)
             a = StudentAgent(i, self, k, p)
             self.schedule.add(a)
+            x = i % 10
+            y = i // 10
+            self.grid.place_agent(a, (x, y))
 
         # Set up data collector
         self.datacollector = mesa.DataCollector(
@@ -51,15 +71,11 @@ class TutoringModel(mesa.Model):
                 "Average Knowledge": get_avg_knowledge,
                 "Average ZPD Size": get_avg_zpd_size,
                 "Average Happiness": get_avg_happiness,
-            },
-            agent_reporters={
-                "Knowledge": "current_knowledge",
-                "Potential": "potential_knowledge",
-                "Happiness": "happiness",
             }
         )
+        self.datacollector.collect(self)
 
-    def step(self):
+    def step(self): 
         """Advance the model by one step."""
         self.datacollector.collect(self)
         self.schedule.step()

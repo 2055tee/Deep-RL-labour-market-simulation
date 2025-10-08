@@ -25,6 +25,7 @@ class StudentAgent(mesa.Agent):
 
     def __init__(self, unique_id, model, initial_knowledge, initial_potential):
         super().__init__(model)
+        self.unique_id = unique_id
         # Vygotsky's Core Attributes
         self.current_knowledge = initial_knowledge  # What the student can do alone
         self.potential_knowledge = initial_potential  # What the student can do with help
