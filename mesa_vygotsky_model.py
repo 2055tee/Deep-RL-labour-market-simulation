@@ -3,6 +3,7 @@ import pandas as pd
 from mesa_vygotsky_agents import StudentAgent # Import the agent file
 import random
 from mesa.space import SingleGrid
+from mesa.experimental.devs import ABMSimulator
 
 # --- Helper Functions for Data Collection ---
 def get_avg_knowledge(model):
@@ -34,7 +35,7 @@ class TutoringModel(mesa.Model):
         happiness_decay=0.05,
         width=10,
         height=10,
-        simulator=None,
+        simulator=ABMSimulator(),
     ):
         super().__init__()
         self.simulator = simulator
