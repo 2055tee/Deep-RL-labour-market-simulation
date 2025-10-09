@@ -1,3 +1,2 @@
 mesa[rec]
-solara
 uvicorn<0.23
