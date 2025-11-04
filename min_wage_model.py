@@ -8,18 +8,23 @@ import numpy as np
 # AGENTS
 # -------------------
 class Worker(Agent):
-    def __init__(self, unique_id, model, productivity, skill_level,):
+    def __init__(self, unique_id, model, productivity, skill_level, savings, expenses):
         super().__init__(model)
         self.unique_id = unique_id
         self.productivity = productivity
         self.employed = False
         self.wage = 0
-        self.savings = 0
+        self.savings = savings
+        self.monthly_expenses = expenses
         self.monthly_search = 3
         self.skill_level = skill_level
-        self.loyalty = 0  # number of consecutive steps employed
+        self.loyalty = 0  # number of consecutive steps employed at the same firm
 
     def step(self):
+        # Pay expenses
+        self.savings -= self.monthly_expenses
+        # TODO: What to do next if worker runs out of savings?
+
         if self.employed:
             return  # already employed, nothing to do
         else :
@@ -191,7 +196,8 @@ class LaborMarketModel(Model):
 
         # Create agents
         for i in range(self.num_workers):
-            w = Worker(i, self, productivity=random.uniform(0.5, 1.5), skill_level=random.uniform(1.0, 3.0))
+            w = Worker(i, self, productivity=random.uniform(0.5, 1.5), skill_level=random.uniform(1.0, 3.0), 
+                       savings=random.randint(2000, 10000), expenses=random.randint(150, 300))
             self.schedule.add(w)
 
         for i in range(self.num_firms):
