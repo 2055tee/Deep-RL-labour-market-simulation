@@ -7,7 +7,7 @@ results = []
 for min_wage in range(300, 601, 50):
     model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=min_wage)
     for i in range(20):  # 20 steps per simulation
-        print(f"************************Step {i+1} completed for min_wage {min_wage}************************")
+        print(f"************************Step {i+1} for min_wage {min_wage}************************")
         model.step()
        
         
