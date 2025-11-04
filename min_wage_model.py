@@ -14,7 +14,7 @@ class Worker(Agent):
         self.productivity = productivity
         self.employed = False
         self.wage = 0
-        self.saving = 0
+        self.savings = 0
         self.monthly_search = 3
         self.skill_level = skill_level
         self.loyalty = 0  # number of consecutive steps employed
@@ -65,7 +65,7 @@ class Firm(Agent):
     def step(self):
         # payout to current workers
         for w in self.current_workers:
-            w.saving += w.wage
+            w.savings += w.wage
         
         # calculate profit
         total_wage_cost = sum([w.wage for w in self.current_workers])
@@ -114,7 +114,7 @@ class Firm(Agent):
                     if self.capital >= self.model.min_wage:
                         best_applicant.employed = True
                         best_applicant.wage = self.model.min_wage
-                        best_applicant.saving += self.model.min_wage
+                        best_applicant.savings += self.model.min_wage
                         self.capital -= self.model.min_wage
                         self.current_workers.append(best_applicant)
                         try:
@@ -135,7 +135,7 @@ class Firm(Agent):
             if w.loyalty % 12 == 0:
                 bonus = 50
                 if self.capital >= bonus:
-                    w.saving += bonus
+                    w.savings += bonus
                     self.capital -= bonus
 
         # update profit and capital
@@ -164,7 +164,7 @@ class Firm(Agent):
         #         # hire worker
         #         worker.employed = True
         #         worker.wage = min_wage
-        #         worker.saving = min_wage
+        #         worker.savings = min_wage
         #         self.capital -= min_wage
         #         hired.append(worker)
         #     else:
