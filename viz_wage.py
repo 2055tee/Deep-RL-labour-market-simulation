@@ -1,65 +1,94 @@
-from mesa.visualization.modules import ChartModule, TextElement
-from mesa.visualization.ModularVisualization import ModularServer
-from mesa.visualization.UserParam import UserSettableParameter
-
+from mesa.experimental.devs import ABMSimulator
+from mesa.visualization import (
+    Slider,
+    SolaraViz,
+    make_plot_component,
+    make_space_component,
+)
 from min_wage_model import LaborMarketModel
 
-# -----------------------------
-# Custom Text display
-# -----------------------------
-class SummaryElement(TextElement):
-    def render(self, model):
-        return (
-            f"Step: {model.schedule.time} <br>"
-            f"Employment Rate: {model.compute_employment_rate():.2f}<br>"
-            f"Average Wage: {model.compute_avg_wage():.2f}<br>"
-            f"Average Profit: {model.compute_avg_profit():.2f}"
-        )
+# --- Agent portrayal ---
+def worker_portrayal(agent):
+    if agent is None:
+        return
 
-# -----------------------------
-# Charts
-# -----------------------------
-employment_chart = ChartModule(
-    [{"Label": "EmploymentRate", "Color": "#1f77b4"}],
-    data_collector_name="datacollector",
-    canvas_height=200,
-    canvas_width=500,
-)
+    portrayal = {
+        "size": 5,
+        "marker": "o",
+        "zorder": 2,
+    }
 
-wage_chart = ChartModule(
-    [{"Label": "AverageWage", "Color": "#2ca02c"}],
-    data_collector_name="datacollector",
-    canvas_height=200,
-    canvas_width=500,
-)
+    if agent.employed:
+        portrayal["color"] = "#2ecc71"  # employed - green
+    else:
+        portrayal["color"] = "#e74c3c"  # unemployed - red
 
-profit_chart = ChartModule(
-    [{"Label": "AverageProfit", "Color": "#ff7f0e"}],
-    data_collector_name="datacollector",
-    canvas_height=200,
-    canvas_width=500,
-)
+    return portrayal
 
-# -----------------------------
-# User Controls
-# -----------------------------
+# -- Firm portrayal ---
+def firm_portrayal(agent):
+    if agent is None:
+        return
+
+    portrayal = {
+        "size": 15,
+        "marker": "s",
+        "color": "#3498db",  # blue
+        "zorder": 1,
+    }
+    
+    if agent.profit >= 0:
+        portrayal["edgecolor"] = "#2ecc71"  # profitable - green border
+    else:
+        portrayal["edgecolor"] = "#e74c3c"  # unprofitable - red border
+
+    return portrayal
+
+def create_model(simulator):
+    model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=350, simulator=simulator)
+    simulator.setup(model)  # <-- always setup
+    return model
+
+# --- Model parameters ---
 model_params = {
-    "N_workers": UserSettableParameter("slider", "Number of Workers", 100, 10, 200, 10),
-    "N_firms": UserSettableParameter("slider", "Number of Firms", 10, 1, 50, 1),
-    "min_wage": UserSettableParameter("slider", "Minimum Wage", 350, 200, 600, 50),
+    "N_workers": Slider("Number of Workers", 100, 50, 500, 10),
+    "N_firms": Slider("Number of Firms", 10, 5, 50, 1),
+    "min_wage": Slider("Minimum Wage", 350, 300, 600, 25),
 }
 
-# -----------------------------
-# Launch Server
-# -----------------------------
-server = ModularServer(
-    LaborMarketModel,
-    [SummaryElement(), employment_chart, wage_chart, profit_chart],
-    "Minimum Wage Economy Model",
-    model_params,
+# --- Visualization helpers ---
+def post_process_space(ax):
+    ax.set_aspect("equal")
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+def post_process_employment(ax):
+    ax.legend(loc="upper left")
+
+# --- Visualization components ---
+space_component = make_space_component(
+    agent_portrayal={ "Worker": worker_portrayal, "Firm": firm_portrayal },
+    width=600,
+    height=600,
+    post_process=post_process_space,
 )
 
-server.port = 8521
+employment_component = make_plot_component(
+    data={"Employment Rate": "employment_rate"},
+    width=600,
+    height=400,
+    post_process=post_process_employment,
+)
 
-if __name__ == "__main__":
-    server.launch()
+# --- Simulation setup ---
+simuulator = ABMSimulator()
+model = LaborMarketModel(simuulator)
+
+page = SolaraViz(
+    simulator=simuulator,
+    model=create_model,
+    model_params=model_params,
+    components=[space_component, employment_component],
+)
+
+page

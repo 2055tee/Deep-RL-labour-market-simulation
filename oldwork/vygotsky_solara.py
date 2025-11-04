@@ -71,7 +71,7 @@ space_component = make_space_component(
 )
 
 lineplot_component = make_plot_component(
-    {
+    data={
         "Average Knowledge": "#3498db",
         "Average ZPD Size": "#f39c12",
         "Average Happiness": "#2ecc71",

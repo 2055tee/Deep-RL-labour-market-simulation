@@ -1,4 +1,5 @@
 from min_wage_model import LaborMarketModel
+from min_wage_model import Worker, Firm
 import pandas as pd
 
 results = []
@@ -6,8 +7,10 @@ results = []
 for min_wage in range(300, 601, 50):
     model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=min_wage)
     for i in range(20):  # 20 steps per simulation
+        print(f"************************Step {i+1} completed for min_wage {min_wage}************************")
         model.step()
-
+       
+        
     data = model.datacollector.get_model_vars_dataframe()
     final = data.iloc[-1]
     results.append({
