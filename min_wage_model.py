@@ -13,7 +13,10 @@ class Worker(Agent):
         self.unique_id = unique_id
         self.productivity = productivity
         self.employed = False
+        # TODO: Implement reservation wage
+        self.reservation_wage = expenses + 10
         self.wage = 0
+        self.welfare = self.wage - self.reservation_wage
         self.savings = savings
         self.monthly_expenses = expenses
         self.monthly_search = 3
@@ -39,12 +42,23 @@ class Worker(Agent):
                     
 
 class Firm(Agent):
-    def __init__(self, unique_id, model, capital, productivity, skill_requirement, product_sales_price):
+    def __init__(self, unique_id, model, capital, productivity, skill_requirement, product_sales_price, fixed_cost):
         super().__init__(model)
         self.unique_id = unique_id
         self.capital = capital
         self.productivity = productivity
+        # TODO: Implement wage setting mechanism
+        # Example A: offered_wage = self.model.min_wage * (1 + 0.1 * self.productivity)
+        # Example B: (Derive wage from a market wage concept)
+        #   market_wage = np.mean([firm.last_offered_wage for firm in firms])
+        #   offered_wage = max(min_wage, market_wage * (1 + 0.1 * self.profit_margin))
+        self.fixed_cost = fixed_cost
         self.skill_requirement = max(1, skill_requirement)
+        # TODO: For Nino: Adjust product sales price based on market conditions
+        # Make PRICE decline slightly as total output rises (captures price competition):
+        # PRICE = base_price * (1 / (1 + alpha * total_output))
+        # alpha small (0.0001–0.01) controls sensitivity.
+        # Read up more on this.
         self.product_sales_price = product_sales_price
         self.applying_workers = []
         self.current_workers = []
@@ -68,14 +82,24 @@ class Firm(Agent):
     
 
     def step(self):
+
+        # TODO: Shouldnt revenue be added straight to the capital from the beginning
+
         # payout to current workers
         for w in self.current_workers:
             w.savings += w.wage
+            # TODO: Shouldnt capital be cut here?
+            # TODO: Also should wages be paid in the worker agent step instead? (for easier worker expense calculation too maybe?)
         
         # calculate profit
+        # TODO: Prevent runaway growth by adding diminishing returns to labor or have a max worker limit. Or calculate market saturation for phase 2!
+        # TODO: For Nino: Compute MRP (Marginal Revenue Product) to use for hiring decisions
+        #   MRP = expected_output_from_one_more_worker * price
+        #   where expected_output_from_one_more_worker = firm.productivity * avg_worker_productivity * diminishing_factor
         total_wage_cost = sum([w.wage for w in self.current_workers])
         total_worker_productivity = sum([w.productivity for w in self.current_workers])
-        self.current_profit = (total_worker_productivity * self.product_sales_price) - total_wage_cost
+        revenue = total_worker_productivity * self.product_sales_price
+        self.current_profit = revenue - total_wage_cost - self.fixed_cost
         
         print(f"profit for Firm {self.unique_id}: {self.current_profit} with {len(self.current_workers)} workers")
         # fire least worthy worker if profit decreased
@@ -100,7 +124,7 @@ class Firm(Agent):
         
         
         # hire new workers from applicants
-
+        # TODO: Adjust hiring logic to also check for skill level
         x = 1
         while self.current_profit > x * self.threshold_profit:
             # refresh applicants to skip any who may have been hired by other firms
@@ -119,6 +143,8 @@ class Firm(Agent):
                     if self.capital >= self.model.min_wage:
                         best_applicant.employed = True
                         best_applicant.wage = self.model.min_wage
+
+                        # TODO: Shouldnt they get paid after working for 1 step first??
                         best_applicant.savings += self.model.min_wage
                         self.capital -= self.model.min_wage
                         self.current_workers.append(best_applicant)
@@ -134,6 +160,7 @@ class Firm(Agent):
                 break
             x += 1
         
+        # TODO: Bonus pay might need to be before new hires so they dont get +1 loyalty right away
         # bonus to worker if stay for 12 steps
         for w in self.current_workers:
             w.loyalty += 1
@@ -201,7 +228,10 @@ class LaborMarketModel(Model):
             self.schedule.add(w)
 
         for i in range(self.num_firms):
-            f = Firm(f"F{i}", self, capital=random.uniform(5000, 10000), productivity=random.uniform(0.75, 2.0), skill_requirement=random.uniform(0.5,2.0), product_sales_price=self.min_wage*random.uniform(1.1,1.75))
+            f = Firm(f"F{i}", self, capital=random.uniform(5000, 10000), productivity=random.uniform(0.75, 2.0), 
+                     skill_requirement=random.uniform(0.5,2.0), product_sales_price=self.min_wage*random.uniform(1.1,1.75), 
+                     fixed_cost=random.uniform(500, 1000))
+                    # TODO: Check if fixed cost is OK
             self.schedule.add(f)
         self.datacollector = DataCollector(
             model_reporters={
