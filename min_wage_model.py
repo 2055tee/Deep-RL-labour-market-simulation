@@ -27,6 +27,9 @@ class Worker(Agent):
         # Pay expenses
         self.savings -= self.monthly_expenses
         # TODO: What to do next if worker runs out of savings?
+        # Apply for jobs if unemployed
+        # Also worker shouldnt spend more than their wage no?
+        # if wage is higher than expenses then they can save more and try to remove debt
 
         if self.employed:
             return  # already employed, nothing to do
@@ -48,7 +51,7 @@ class Firm(Agent):
         self.capital = capital
         self.productivity = productivity
         # TODO: Implement wage setting mechanism
-        # Example A: offered_wage = self.model.min_wage * (1 + 0.1 * self.productivity)
+        # Example A: offered_wage = self.model.min_wage * (1 + 0.1 * self.productivity) not quite understand
         # Example B: (Derive wage from a market wage concept)
         #   market_wage = np.mean([firm.last_offered_wage for firm in firms])
         #   offered_wage = max(min_wage, market_wage * (1 + 0.1 * self.profit_margin))
@@ -84,12 +87,18 @@ class Firm(Agent):
     def step(self):
 
         # TODO: Shouldnt revenue be added straight to the capital from the beginning
-
+        
+        
         # payout to current workers
         for w in self.current_workers:
             w.savings += w.wage
             # TODO: Shouldnt capital be cut here?
+            # if needed the capital early before profit calculation
+            # right now its being use for profit calculation as well
+            
             # TODO: Also should wages be paid in the worker agent step instead? (for easier worker expense calculation too maybe?)
+            # We can but have to make sure that the worker get paid before Firm steps or else the firm will fired them and they get no wage
+            
         
         # calculate profit
         # TODO: Prevent runaway growth by adding diminishing returns to labor or have a max worker limit. Or calculate market saturation for phase 2!
@@ -121,10 +130,19 @@ class Firm(Agent):
             worker_to_kick.employed = False
             worker_to_kick.wage = 0
         
-        
+        # bonus to worker if stay for 12 steps
+        for w in self.current_workers:
+            w.loyalty += 1
+            if w.loyalty % 12 == 0:
+                bonus = 50
+                if self.capital >= bonus:
+                    w.savings += bonus
+                    self.capital -= bonus
         
         # hire new workers from applicants
         # TODO: Adjust hiring logic to also check for skill level
+        # Answer: Already done in worker application step
+        # Worker only applies to firms where skill_level >= firm.skill_requirement
         x = 1
         while self.current_profit > x * self.threshold_profit:
             # refresh applicants to skip any who may have been hired by other firms
@@ -144,9 +162,6 @@ class Firm(Agent):
                         best_applicant.employed = True
                         best_applicant.wage = self.model.min_wage
 
-                        # TODO: Shouldnt they get paid after working for 1 step first??
-                        best_applicant.savings += self.model.min_wage
-                        self.capital -= self.model.min_wage
                         self.current_workers.append(best_applicant)
                         try:
                             self.applying_workers.remove(best_applicant)
@@ -160,15 +175,7 @@ class Firm(Agent):
                 break
             x += 1
         
-        # TODO: Bonus pay might need to be before new hires so they dont get +1 loyalty right away
-        # bonus to worker if stay for 12 steps
-        for w in self.current_workers:
-            w.loyalty += 1
-            if w.loyalty % 12 == 0:
-                bonus = 50
-                if self.capital >= bonus:
-                    w.savings += bonus
-                    self.capital -= bonus
+        
 
         # update profit and capital
         self.previous_profit = self.current_profit
