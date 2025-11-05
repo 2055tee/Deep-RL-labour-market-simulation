@@ -50,7 +50,12 @@ class Firm(Agent):
         self.unique_id = unique_id
         self.capital = capital
         self.productivity = productivity
+
         self.work_days_per_step = 22
+        # TODO: Implement hiring and vacancy costs
+        self.hiring_cost_per_worker = 2000
+        self.vacancy_cost_per_step = 200
+
         # TODO: Implement wage setting mechanism
         # Example A: offered_wage = self.model.min_wage * (1 + 0.1 * self.productivity) not quite understand
         # Example B: (Derive wage from a market wage concept)
@@ -63,6 +68,7 @@ class Firm(Agent):
         # PRICE = base_price * (1 / (1 + alpha * total_output))
         # alpha small (0.0001–0.01) controls sensitivity.
         # Read up more on this.
+
         self.product_sales_price = product_sales_price
         self.applying_workers = []
         self.current_workers = []
@@ -196,7 +202,7 @@ class Firm(Agent):
         # random.shuffle(available_workers)
 
         # desired_workers = int(self.productivity * 10)  # crude "labor demand"
-        # min_wage = self.model.min_wage
+        # min_wage = self.model.min_wage 
 
         # hired = []
         # for worker in available_workers[:desired_workers]:
@@ -234,9 +240,9 @@ class LaborMarketModel(Model):
             w = Worker(i, self, productivity=random.uniform(0.5, 1.5), skill_level=random.uniform(1.0, 3.0), 
                        savings=random.randint(10000, 30000), expenses=random.randint(4500, 9000)) # monthly expenses
             self.schedule.add(w)
-
+        # TODO: Skill requirement should be related to worker skill level distribution
         for i in range(self.num_firms):
-            f = Firm(f"F{i}", self, capital=random.uniform(5000, 10000), productivity=random.uniform(0.75, 2.0), 
+            f = Firm(f"F{i}", self, capital=random.uniform(250000, 750000), productivity=random.uniform(0.75, 2.0), 
                      skill_requirement=random.uniform(0.5,2.0), product_sales_price=self.min_wage*random.uniform(1.1,1.75), 
                      fixed_cost=random.uniform(500, 1000))
                     # TODO: Check if fixed cost is OK
