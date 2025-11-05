@@ -14,7 +14,7 @@ class Worker(Agent):
         self.productivity = productivity
         self.employed = False
         # TODO: Implement reservation wage
-        self.reservation_wage = expenses + 10
+        self.reservation_wage = expenses + 100
         self.wage = 0
         self.welfare = self.wage - self.reservation_wage
         self.savings = savings
@@ -50,6 +50,7 @@ class Firm(Agent):
         self.unique_id = unique_id
         self.capital = capital
         self.productivity = productivity
+        self.work_days_per_step = 22
         # TODO: Implement wage setting mechanism
         # Example A: offered_wage = self.model.min_wage * (1 + 0.1 * self.productivity) not quite understand
         # Example B: (Derive wage from a market wage concept)
@@ -79,7 +80,7 @@ class Firm(Agent):
         hires = available_workers[:num_hires]
         for w in hires:
             w.employed = True
-            w.wage = self.model.min_wage
+            w.wage = self.model.min_wage * self.work_days_per_step  # pay for a month
             self.current_workers.append(w)
         # print(f"Firm {self.unique_id} initial hires: {[w.unique_id for w in hires]}")
     
@@ -158,9 +159,9 @@ class Firm(Agent):
                     except ValueError:
                         pass
                 else:
-                    if self.capital >= self.model.min_wage:
+                    if self.capital >= self.model.min_wage * self.work_days_per_step:
                         best_applicant.employed = True
-                        best_applicant.wage = self.model.min_wage
+                        best_applicant.wage = self.model.min_wage * self.work_days_per_step  # pay for a month
 
                         self.current_workers.append(best_applicant)
                         try:
@@ -231,7 +232,7 @@ class LaborMarketModel(Model):
         # Create agents
         for i in range(self.num_workers):
             w = Worker(i, self, productivity=random.uniform(0.5, 1.5), skill_level=random.uniform(1.0, 3.0), 
-                       savings=random.randint(2000, 10000), expenses=random.randint(150, 300))
+                       savings=random.randint(10000, 30000), expenses=random.randint(4500, 9000)) # monthly expenses
             self.schedule.add(w)
 
         for i in range(self.num_firms):
