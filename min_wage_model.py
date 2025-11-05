@@ -22,7 +22,7 @@ class Worker(Agent):
         self.welfare = self.wage - self.reservation_wage
         self.savings = savings
         self.monthly_expenses = expenses
-        self.monthly_search = 3
+        self.monthly_search = 3 # TODO: Maybe make this a model parameter later or tune later
         self.skill_level = skill_level
         self.loyalty = 0  # number of consecutive steps employed at the same firm
 
@@ -35,7 +35,8 @@ class Worker(Agent):
         # if wage is higher than expenses then they can save more and try to remove debt
 
         if self.employed:
-            return  # already employed, nothing to do
+            # TODO: Consider switching jobs if better offer available (not implemented yet)
+            return 
         else :
             all_available_firms = [a for a in self.model.schedule.agents if isinstance(a, Firm)]
             # shuffle and pick firms to apply
@@ -48,7 +49,7 @@ class Worker(Agent):
                     
 
 class Firm(Agent):
-    def __init__(self, unique_id, model, capital, productivity, skill_requirement, product_sales_price, fixed_cost):
+    def __init__(self, unique_id, model, capital, productivity, skill_requirement, fixed_cost):
         super().__init__(model)
         self.unique_id = unique_id
         self.capital = capital
@@ -73,8 +74,18 @@ class Firm(Agent):
         # alpha small (0.0001–0.01) controls sensitivity.
         # Read up more on this.
 
-        self.base_output_per_worker_per_day = 10  # Example value
-        self.product_sales_price = product_sales_price
+        self.base_output_per_worker_per_day = 10  # Example value TODO: Maybe make this a model parameter or be tuned later
+
+        # Pricing
+        self.avg_wage_target = self.model.min_wage # * 1.2  # target average wage in the economy TODO: Tune this based on empirical data later
+        labor_share = 0.6 # typical labor share of income TODO: Tune this based on empirical data later
+        expected_output_per_worker = self.productivity * self.base_output_per_worker_per_day
+
+        target_revenue_per_worker = self.avg_wage_target / labor_share
+        BASE_PRICE = target_revenue_per_worker / expected_output_per_worker
+        print(f"Firm {self.unique_id} base product price set to {BASE_PRICE:.2f} based on target wage {self.avg_wage_target} and labor share {labor_share}")
+
+        self.product_sales_price = BASE_PRICE * random.uniform(0.9, 1.1)  # +/-10% noise
         self.applying_workers = []
         self.current_workers = []
         self.max_workers = 10 # maximum number of workers firm can employ TODO: Base this on capital and productivity later
@@ -82,7 +93,7 @@ class Firm(Agent):
         self.current_profit = 0 
         self.vacancies = 0
         self.threshold_profit = 2000 # minimum profit to consider hiring TODO: Make this a model parameter later and tune based on capital and productivity
-        self.productivity_effectiveness = 1.0 # change to adjust hiring based on productivity (number ^ 0.8)
+        self.productivity_effectiveness = 1.0 # change to adjust hiring based on productivity (number ^ 0.8) TODO: Remove later if unused
         self.initialize_hires(num_hires=5)
 
     # initialize hired workers with random workers stats
@@ -238,6 +249,7 @@ class Firm(Agent):
                     break
 
         # clear applicants for next step
+        # TODO: Consider keeping applicants for multiple steps?
         self.applying_workers = []
         
         
@@ -267,8 +279,7 @@ class LaborMarketModel(Model):
         # TODO: Skill requirement should be related to worker skill level distribution
         for i in range(self.num_firms):
             f = Firm(f"F{i}", self, capital=random.uniform(250000, 750000), productivity=random.uniform(0.75, 2.0), 
-                     skill_requirement=random.uniform(0.5,2.0), product_sales_price=self.min_wage*random.uniform(1.1,1.75), 
-                     fixed_cost=random.uniform(500, 1000))
+                     skill_requirement=random.uniform(0.5,2.0), fixed_cost=random.uniform(500, 1000))
                     # TODO: Base fixed_cost on capital and productivity and/or unit cost later
             self.schedule.add(f)
             
