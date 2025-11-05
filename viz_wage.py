@@ -3,9 +3,8 @@ from mesa.visualization import (
     Slider,
     SolaraViz,
     make_plot_component,
-    make_space_component,
 )
-from min_wage_model import LaborMarketModel
+from min_wage_model import LaborMarketModel , Worker, Firm
 
 # --- Agent portrayal ---
 def worker_portrayal(agent):
@@ -45,8 +44,9 @@ def firm_portrayal(agent):
     return portrayal
 
 def create_model(simulator):
-    model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=350, simulator=simulator)
-    simulator.setup(model)  # <-- always setup
+    # LaborMarketModel does not accept a 'simulator' kwarg; create the model
+    model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=350,simulator=ABMSimulator())
+    simulator.setup(model)  # <-- always setup when using ABMSimulator
     return model
 
 # --- Model parameters ---
@@ -57,38 +57,52 @@ model_params = {
 }
 
 # --- Visualization helpers ---
-def post_process_space(ax):
-    ax.set_aspect("equal")
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-def post_process_employment(ax):
-    ax.legend(loc="upper left")
-
+def post_process_lines(ax):
+    ax.legend(loc="center left", bbox_to_anchor=(1, 0.9))
+    
 # --- Visualization components ---
-space_component = make_space_component(
-    agent_portrayal={ "Worker": worker_portrayal, "Firm": firm_portrayal },
-    width=600,
-    height=600,
-    post_process=post_process_space,
+lineplot_component = make_plot_component(
+    measure="EmploymentRate",  # Directly specify the measure to plot
+    post_process=post_process_lines,
 )
 
-employment_component = make_plot_component(
-    data={"Employment Rate": "employment_rate"},
-    width=600,
-    height=400,
-    post_process=post_process_employment,
+# If you need to plot more measures like "AverageWage" or "AverageProfit", you can do this:
+lineplot_component_wage = make_plot_component(
+    measure="AverageWage",  # Specify the measure for the AverageWage plot
+    post_process=post_process_lines,
+)
+
+lineplot_component_profit = make_plot_component(
+    {"AverageProfit":"tab:orange"},  # Specify the measure for the AverageProfit plot
+    post_process=post_process_lines,
+)
+
+lineplot_component_firm_size = make_plot_component(
+    measure="FirmSize",  # Specify the measure for the Firm Size plot
+    post_process=post_process_lines,
+)    
+
+lineplot_component_firm_capital = make_plot_component(
+    measure="AvgFirmCapital",  # Specify the measure for the Firm Capital plot
+    post_process=post_process_lines,
+)
+
+# profit vs firm size
+lineplot_component_profit_vs_firm_size = make_plot_component(
+    measure=["AverageProfit", "FirmSize"],  # Specify the measures for profit vs firm size
+    post_process=post_process_lines,
 )
 
 # --- Simulation setup ---
-simuulator = ABMSimulator()
-model = LaborMarketModel(simuulator)
+simulator = ABMSimulator()
+model = create_model(simulator)
 
+# Do not instantiate the model here; Solara/ABMSimulator will call `create_model(simulator)`
 page = SolaraViz(
-    simulator=simuulator,
-    model=create_model,
+    simulator=simulator,
+    model=model,
     model_params=model_params,
-    components=[space_component, employment_component],
+    components=[lineplot_component, lineplot_component_wage, lineplot_component_profit, lineplot_component_firm_size, lineplot_component_firm_capital, lineplot_component_profit_vs_firm_size],
 )
 
 page

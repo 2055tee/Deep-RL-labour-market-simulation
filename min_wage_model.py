@@ -1,7 +1,10 @@
 from mesa import Model, Agent
 from mesa.time import RandomActivation
 from mesa.datacollection import DataCollector
+from mesa.experimental.devs import ABMSimulator
+from mesa.space import MultiGrid
 import random
+import mesa
 import numpy as np
 
 # -------------------
@@ -228,13 +231,18 @@ class Firm(Agent):
 # MODEL
 # -------------------
 class LaborMarketModel(Model):
-    def __init__(self, N_workers=100, N_firms=10, min_wage=350):
+    def __init__(self, N_workers=100, N_firms=10, min_wage=350, simulator=None):
+        self.simulator = simulator
+        if self.simulator:
+            self.simulator.setup(self)
         self.num_workers = N_workers
         self.num_firms = N_firms
         self.min_wage = min_wage
+        self.step_count = 0
         self.random = random.Random()
+        self.running = True # Needed for Mesa to know the model is running
         self.schedule = RandomActivation(self)
-
+        
         # Create agents
         for i in range(self.num_workers):
             w = Worker(i, self, productivity=random.uniform(0.5, 1.5), skill_level=random.uniform(1.0, 3.0), 
@@ -247,21 +255,31 @@ class LaborMarketModel(Model):
                      fixed_cost=random.uniform(500, 1000))
                     # TODO: Check if fixed cost is OK
             self.schedule.add(f)
-        self.datacollector = DataCollector(
-            model_reporters={
-                "EmploymentRate": self.compute_employment_rate,
-                "AverageWage": self.compute_avg_wage,
-                "AverageProfit": self.compute_avg_profit
-            }
-        )
-
-    def step(self):
+            
+        # Data Collector
+        model_reporters={
+            "EmploymentRate": self.compute_employment_rate,
+            "AverageWage": self.compute_avg_wage,
+            "AverageProfit": self.compute_avg_profit,
+            "FirmSize": self.get_firm_size,
+            "AvgFirmCapital": self.get_avg_firm_capital,
+        }
+        
+        self.datacollector = mesa.DataCollector(model_reporters)
         self.datacollector.collect(self)
+    
+    def step(self):
         self.schedule.step()
+        self.datacollector.collect(self)
+        self.step_count += 1
+        
+    def steps(self):
+        return self.step_count
 
     def compute_employment_rate(self):
         workers = [a for a in self.schedule.agents if isinstance(a, Worker)]
         employed = [w for w in workers if w.employed]
+        print(f"Employed: {len(employed)} / {len(workers)}")
         return len(employed) / len(workers)
 
     def compute_avg_wage(self):
@@ -271,3 +289,12 @@ class LaborMarketModel(Model):
     def compute_avg_profit(self):
         profits = [f.previous_profit for f in self.schedule.agents if isinstance(f, Firm)]
         return np.mean(profits) if profits else 0
+
+    def get_firm_size(self):
+        # average number of workers per firm
+        firm_sizes = [len(f.current_workers) for f in self.schedule.agents if isinstance(f, Firm)]
+        return np.mean(firm_sizes) if firm_sizes else 0
+    
+    def get_avg_firm_capital(self):
+        firm_capitals = [f.capital for f in self.schedule.agents if isinstance(f, Firm)]
+        return np.mean(firm_capitals) if firm_capitals else 0
