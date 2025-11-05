@@ -1,15 +1,16 @@
 from min_wage_model import LaborMarketModel
 from min_wage_model import Worker, Firm
 import pandas as pd
+import random
 
 results = []
 
 for min_wage in range(300, 601, 50):
     model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=min_wage)
     for i in range(24):  # 24 steps per simulation (e.g., 2 years since each step is a month)
-        # print(f"************************Step {i+1} for min_wage {min_wage}************************")
+        print(f"************************Step {i+1} for min_wage {min_wage}************************")
         
-        model.steps()
+        model.step()
        
         
     data = model.datacollector.get_model_vars_dataframe()

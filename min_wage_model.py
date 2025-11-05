@@ -83,17 +83,18 @@ class Firm(Agent):
 
         target_revenue_per_worker = self.avg_wage_target / labor_share
         BASE_PRICE = target_revenue_per_worker / expected_output_per_worker
-        print(f"Firm {self.unique_id} base product price set to {BASE_PRICE:.2f} based on target wage {self.avg_wage_target} and labor share {labor_share}")
+        # print(f"Firm {self.unique_id} base product price set to {BASE_PRICE:.2f} based on target wage {self.avg_wage_target} and labor share {labor_share}")
 
-        self.product_sales_price = BASE_PRICE * random.uniform(0.9, 1.1)  # +/-10% noise
+        self.product_sales_price = BASE_PRICE * random.uniform(1.5, 1.7)  # +/-10% noise
         self.applying_workers = []
         self.current_workers = []
-        self.max_workers = 10 # maximum number of workers firm can employ TODO: Base this on capital and productivity later
+        self.max_workers = 50 # maximum number of workers firm can employ TODO: Base this on capital and productivity later
         self.previous_profit = 0 # TODO: Might be removed later if still unused
         self.current_profit = 0 
         self.vacancies = 0
         self.threshold_profit = 2000 # minimum profit to consider hiring TODO: Make this a model parameter later and tune based on capital and productivity
         self.productivity_effectiveness = 1.0 # change to adjust hiring based on productivity (number ^ 0.8) TODO: Remove later if unused
+        self.max_batch_hires = 5  # maximum number of hires per step TODO: Make this a model parameter later
         self.initialize_hires(num_hires=5)
 
     # initialize hired workers with random workers stats
@@ -145,7 +146,8 @@ class Firm(Agent):
             avg_worker_productivity * labor_diminishing_factor * self.productivity
         mrp = expected_output_from_one_more_worker * self.product_sales_price
         marginal_cost_of_hiring = self.model.min_wage * self.work_days_per_step + self.hiring_cost_per_worker # wage + hiring cost
-        print(f"Firm {self.unique_id} MRP: {mrp:.2f} vs Marginal Cost: {marginal_cost_of_hiring:.2f}")
+        print(f"Firm {self.unique_id} MRP: {mrp:.2f} vs Marginal Cost: {marginal_cost_of_hiring:.2f} and with price {self.product_sales_price:.2f}")
+
 
         # Forecast hiring 1..k workers (greedy incremental)
         k = 0
@@ -165,6 +167,8 @@ class Firm(Agent):
             if incr_profit > self.hiring_margin_threshold and (len(self.current_workers) + k) < self.max_workers: # only hire if profit margin exceeds threshold
                 k += 1
                 expected_capital += incr_profit  # optimistic reinvest
+                if k >= self.max_batch_hires:
+                    break
             else:
                 break
 
@@ -173,6 +177,8 @@ class Firm(Agent):
             self.vacancies = k
         else:
             self.vacancies = 0
+            
+        
 
         # Hire or fire based on profit
         # 1. If profit > threshold and vacancies > 0, hire from applicants
@@ -193,13 +199,13 @@ class Firm(Agent):
                 worker_worth[w] = profit_change
             # kick out 1 worker that gives least profit increase (or most profit decrease)
             worker_to_kick = max(worker_worth, key=worker_worth.get)
-            print(f"Firm {self.unique_id} firing Worker {worker_to_kick.unique_id} worth {worker_worth[worker_to_kick]:.2f}")
+            # print(f"Firm {self.unique_id} firing Worker {worker_to_kick.unique_id} worth {worker_worth[worker_to_kick]:.2f}")
             self.current_workers.remove(worker_to_kick)
             worker_to_kick.employed = False
             worker_to_kick.wage = 0
             self.vacancies += 1  # create vacancy due to firing
         
-        print(f"profit for Firm {self.unique_id}: {self.current_profit} with {len(self.current_workers)} workers")
+        # print(f"profit for Firm {self.unique_id}: {self.current_profit} with {len(self.current_workers)} workers")
         
         # bonus to worker if stay for 12 steps (1 year)
         for w in self.current_workers:
@@ -229,6 +235,7 @@ class Firm(Agent):
                         if self.capital >= marginal_cost_of_hiring:
                             best_applicant.employed = True
                             best_applicant.wage = self.model.min_wage * self.work_days_per_step  # pay for a month
+                            print(best_applicant.wage)
                             self.current_workers.append(best_applicant)
 
                             try:
@@ -247,6 +254,8 @@ class Firm(Agent):
                 else:
                     # no more applicants
                     break
+        
+        # print(f"Firm {self.unique_id} with profit {self.current_profit}")
 
         # clear applicants for next step
         # TODO: Consider keeping applicants for multiple steps?
@@ -259,27 +268,27 @@ class Firm(Agent):
 # MODEL
 # -------------------
 class LaborMarketModel(Model):
-    def __init__(self, N_workers=100, N_firms=10, min_wage=350, simulator=None):
+    def __init__(self, N_workers=100, N_firms=10, min_wage=350, simulator=None, seed=42):
+        super().__init__(seed=seed)
         self.simulator = simulator
-        if self.simulator:
-            self.simulator.setup(self)
+        self.simulator.setup(self)
         self.num_workers = N_workers
         self.num_firms = N_firms
         self.min_wage = min_wage
         self.step_count = 0
-        self.random = random.Random()
         self.running = True # Needed for Mesa to know the model is running
         self.schedule = RandomActivation(self)
+        random.seed(seed)
         
         # Create agents
         for i in range(self.num_workers):
-            w = Worker(i, self, productivity=random.uniform(0.5, 1.5), skill_level=random.uniform(1.0, 3.0), 
+            w = Worker(i, self, productivity=random.uniform(0.5, 1.5), skill_level=random.uniform(1.0, 3.0),
                        savings=random.randint(10000, 30000), expenses=random.randint(4500, 9000)) # monthly expenses
             self.schedule.add(w)
         # TODO: Skill requirement should be related to worker skill level distribution
         for i in range(self.num_firms):
-            f = Firm(f"F{i}", self, capital=random.uniform(250000, 750000), productivity=random.uniform(0.75, 2.0), 
-                     skill_requirement=random.uniform(0.5,2.0), fixed_cost=random.uniform(500, 1000))
+            f = Firm(f"F{i}", self, capital=random.uniform(250000, 750000), productivity=random.uniform(0.75, 2.0),
+                    skill_requirement=random.uniform(0.5,2.0), fixed_cost=random.uniform(500, 1000))
                     # TODO: Base fixed_cost on capital and productivity and/or unit cost later
             self.schedule.add(f)
             
@@ -290,12 +299,17 @@ class LaborMarketModel(Model):
             "AverageProfit": self.compute_avg_profit,
             "FirmSize": self.get_firm_size,
             "AvgFirmCapital": self.get_avg_firm_capital,
+            "MinWage": self.get_min_wage
         }
         
         self.datacollector = mesa.DataCollector(model_reporters)
         self.datacollector.collect(self)
     
     def step(self):
+        # increase min wage over time
+        if self.step_count % 6 == 0 and self.step_count > 0:
+            self.min_wage += 100
+        print(f"min_wage increased to {self.min_wage} at step {self.step_count}")
         self.schedule.step()
         self.datacollector.collect(self)
         self.step_count += 1
@@ -306,7 +320,6 @@ class LaborMarketModel(Model):
     def compute_employment_rate(self):
         workers = [a for a in self.schedule.agents if isinstance(a, Worker)]
         employed = [w for w in workers if w.employed]
-        print(f"Employed: {len(employed)} / {len(workers)}")
         return len(employed) / len(workers)
 
     def compute_avg_wage(self):
@@ -325,3 +338,6 @@ class LaborMarketModel(Model):
     def get_avg_firm_capital(self):
         firm_capitals = [f.capital for f in self.schedule.agents if isinstance(f, Firm)]
         return np.mean(firm_capitals) if firm_capitals else 0
+    
+    def get_min_wage(self):
+        return self.min_wage

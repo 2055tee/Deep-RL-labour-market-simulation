@@ -44,13 +44,18 @@ def firm_portrayal(agent):
     return portrayal
 
 def create_model(simulator):
-    # LaborMarketModel does not accept a 'simulator' kwarg; create the model
-    model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=350,simulator=ABMSimulator())
-    simulator.setup(model)  # <-- always setup when using ABMSimulator
+    model = LaborMarketModel(simulator=simulator)
+    simulator.setup(model)  # <-- always setup
     return model
+
 
 # --- Model parameters ---
 model_params = {
+    "seed": {
+        "type": "InputText",
+        "value": 42,
+        "label": "Random Seed",
+    },
     "N_workers": Slider("Number of Workers", 100, 50, 500, 10),
     "N_firms": Slider("Number of Firms", 10, 5, 50, 1),
     "min_wage": Slider("Minimum Wage", 350, 300, 600, 25),
@@ -93,16 +98,23 @@ lineplot_component_profit_vs_firm_size = make_plot_component(
     post_process=post_process_lines,
 )
 
+lineplot_component_min_wage = make_plot_component(
+    measure="MinWage",  # Specify the measure for the Minimum Wage plot
+    post_process=post_process_lines,
+)
+
 # --- Simulation setup ---
 simulator = ABMSimulator()
-model = create_model(simulator)
+model = LaborMarketModel(simulator=simulator)
+
 
 # Do not instantiate the model here; Solara/ABMSimulator will call `create_model(simulator)`
 page = SolaraViz(
     simulator=simulator,
     model=model,
     model_params=model_params,
-    components=[lineplot_component, lineplot_component_wage, lineplot_component_profit, lineplot_component_firm_size, lineplot_component_firm_capital, lineplot_component_profit_vs_firm_size],
+    components=[lineplot_component, lineplot_component_wage, lineplot_component_profit, lineplot_component_firm_size, lineplot_component_firm_capital, lineplot_component_profit_vs_firm_size,
+                lineplot_component_min_wage],
 )
 
 page
