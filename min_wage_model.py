@@ -88,7 +88,7 @@ class Firm(Agent):
         self.product_sales_price = BASE_PRICE * random.uniform(1.5, 1.7)  # +/-10% noise
         self.applying_workers = []
         self.current_workers = []
-        self.max_workers = 50 # maximum number of workers firm can employ TODO: Base this on capital and productivity later
+        self.max_workers = 10 # maximum number of workers firm can employ TODO: Base this on capital and productivity later
         self.previous_profit = 0 # TODO: Might be removed later if still unused
         self.current_profit = 0 
         self.vacancies = 0
@@ -167,8 +167,6 @@ class Firm(Agent):
             if incr_profit > self.hiring_margin_threshold and (len(self.current_workers) + k) < self.max_workers: # only hire if profit margin exceeds threshold
                 k += 1
                 expected_capital += incr_profit  # optimistic reinvest
-                if k >= self.max_batch_hires:
-                    break
             else:
                 break
 
@@ -220,7 +218,9 @@ class Firm(Agent):
         if self.current_profit > self.threshold_profit and self.vacancies > 0:
             # refresh applicants to skip any who may have been hired by other firms
             self.applying_workers = [w for w in self.applying_workers if not w.employed]
-            while self.vacancies > 0:
+            num_hired = 0
+            # hire best applicants up to vacancies or max batch hires
+            while self.vacancies > 0 and num_hired < self.max_batch_hires:
                 if self.applying_workers:
                     # hire the most productive applicant who is still unemployed
                     best_applicant = max(self.applying_workers, key=lambda w: w.productivity)
