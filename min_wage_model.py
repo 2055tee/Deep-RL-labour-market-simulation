@@ -89,7 +89,6 @@ class Firm(Agent):
         self.applying_workers = []
         self.current_workers = []
         self.max_workers = 10 # maximum number of workers firm can employ TODO: Base this on capital and productivity later
-        self.previous_profit = 0 # TODO: Might be removed later if still unused
         self.current_profit = 0 
         self.vacancies = 0
         self.threshold_profit = 2000 # minimum profit to consider hiring TODO: Make this a model parameter later and tune based on capital and productivity
@@ -124,9 +123,9 @@ class Firm(Agent):
                    self.product_sales_price)
         self.current_profit = revenue - total_wage_cost - self.fixed_cost - (self.vacancies * self.vacancy_cost_per_step)
 
+        print(f"Firm {self.unique_id} revenue: {revenue:.2f}, wage cost: {total_wage_cost:.2f}, fixed cost: {self.fixed_cost:.2f}, vacancies: {self.vacancies}, profit: {self.current_profit:.2f}")
 
         # update profit and capital
-        self.previous_profit = self.current_profit
         self.capital += self.current_profit
         
         # payout to current workers
@@ -146,7 +145,7 @@ class Firm(Agent):
             avg_worker_productivity * labor_diminishing_factor * self.productivity
         mrp = expected_output_from_one_more_worker * self.product_sales_price
         marginal_cost_of_hiring = self.model.min_wage * self.work_days_per_step + self.hiring_cost_per_worker # wage + hiring cost
-        print(f"Firm {self.unique_id} MRP: {mrp:.2f} vs Marginal Cost: {marginal_cost_of_hiring:.2f} and with price {self.product_sales_price:.2f}")
+        # print(f"Firm {self.unique_id} MRP: {mrp:.2f} vs Marginal Cost: {marginal_cost_of_hiring:.2f} and with price {self.product_sales_price:.2f}")
 
 
         # Forecast hiring 1..k workers (greedy incremental)
@@ -255,6 +254,12 @@ class Firm(Agent):
                     # no more applicants
                     break
         
+        # change wage for existing worker when min wage increases
+        for w in self.current_workers:
+            if w.wage < self.model.min_wage * self.work_days_per_step:
+                w.wage = self.model.min_wage * self.work_days_per_step
+    
+        
         # print(f"Firm {self.unique_id} with profit {self.current_profit}")
 
         # clear applicants for next step
@@ -270,8 +275,9 @@ class Firm(Agent):
 class LaborMarketModel(Model):
     def __init__(self, N_workers=100, N_firms=10, min_wage=350, simulator=None, seed=42):
         super().__init__(seed=seed)
-        self.simulator = simulator
-        self.simulator.setup(self)
+        if simulator:
+            self.simulator = simulator
+            self.simulator.setup(self)
         self.num_workers = N_workers
         self.num_firms = N_firms
         self.min_wage = min_wage
@@ -297,16 +303,21 @@ class LaborMarketModel(Model):
             "EmploymentRate": self.compute_employment_rate,
             "AverageWage": self.compute_avg_wage,
             "AverageProfit": self.compute_avg_profit,
-            "FirmSize": self.get_firm_size,
+            "AvgFirmSize": self.get_firm_size,
             "AvgFirmCapital": self.get_avg_firm_capital,
-            "MinWage": self.get_min_wage
+            "MinWage": self.get_min_wage,
+            # NEW: Collect lists of all values for later analysis/distribution plotting
+            "AllFirmSizes": self.get_firm_sizes_list, 
+            "AllFirmCapitals": self.get_firm_capitals_list,
+            "AllEmployedWages": self.get_employed_wages_list,
+            "AllFirmProfits": self.get_firm_profits_list,
         }
         
         self.datacollector = mesa.DataCollector(model_reporters)
         self.datacollector.collect(self)
     
     def step(self):
-        # increase min wage over time
+        # increase min wage over time   
         if self.step_count % 6 == 0 and self.step_count > 0:
             self.min_wage += 100
         print(f"min_wage increased to {self.min_wage} at step {self.step_count}")
@@ -323,11 +334,11 @@ class LaborMarketModel(Model):
         return len(employed) / len(workers)
 
     def compute_avg_wage(self):
-        wages = [w.wage for w in self.schedule.agents if isinstance(w, Worker) and w.employed]
+        wages = [w.wage for w in self.schedule.agents if isinstance(w, Worker)]
         return np.mean(wages) if wages else 0
 
     def compute_avg_profit(self):
-        profits = [f.previous_profit for f in self.schedule.agents if isinstance(f, Firm)]
+        profits = [f.current_profit for f in self.schedule.agents if isinstance(f, Firm)]
         return np.mean(profits) if profits else 0
 
     def get_firm_size(self):
@@ -341,3 +352,15 @@ class LaborMarketModel(Model):
     
     def get_min_wage(self):
         return self.min_wage
+    
+    def get_firm_sizes_list(self):
+        return [len(f.current_workers) for f in self.schedule.agents if isinstance(f, Firm)]
+    
+    def get_firm_capitals_list(self):
+        return [f.capital for f in self.schedule.agents if isinstance(f, Firm)]
+    
+    def get_employed_wages_list(self):
+        return [w.wage for w in self.schedule.agents if isinstance(w, Worker)]
+    
+    def get_firm_profits_list(self):
+        return [f.current_profit for f in self.schedule.agents if isinstance(f, Firm)]
