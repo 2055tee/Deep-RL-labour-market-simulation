@@ -92,16 +92,11 @@ lineplot_component_firm_capital = make_plot_component(
     post_process=post_process_lines,
 )
 
-# profit vs firm size
-lineplot_component_profit_vs_firm_size = make_plot_component(
-    measure=["AverageProfit", "AvgFirmSize"],  # Specify the measures for profit vs firm size
-    post_process=post_process_lines,
-)
-
 lineplot_component_min_wage = make_plot_component(
     measure="MinWage",  # Specify the measure for the Minimum Wage plot
     post_process=post_process_lines,
 )
+
 
 # --- Simulation setup ---
 simulator = ABMSimulator()
@@ -113,7 +108,7 @@ page = SolaraViz(
     simulator=simulator,
     model=model,
     model_params=model_params,
-    components=[lineplot_component, lineplot_component_wage, lineplot_component_profit, lineplot_component_firm_size, lineplot_component_firm_capital, lineplot_component_profit_vs_firm_size,
+    components=[lineplot_component, lineplot_component_wage, lineplot_component_profit, lineplot_component_firm_size, lineplot_component_firm_capital,
                 lineplot_component_min_wage],
 )
 
