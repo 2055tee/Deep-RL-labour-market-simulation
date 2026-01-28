@@ -80,7 +80,7 @@ class Firm(Agent):
         self.avg_wage_target = self.model.min_wage # * 1.2  # target average wage in the economy TODO: Tune this based on empirical data later
         labor_share = 0.6 # typical labor share of income TODO: Tune this based on empirical data later
         expected_output_per_worker = self.productivity * self.base_output_per_worker_per_day
-
+        self.number_of_products = 0
         target_revenue_per_worker = self.avg_wage_target / labor_share
         BASE_PRICE = target_revenue_per_worker / expected_output_per_worker
         # print(f"Firm {self.unique_id} base product price set to {BASE_PRICE:.2f} based on target wage {self.avg_wage_target} and labor share {labor_share}")
@@ -118,9 +118,8 @@ class Firm(Agent):
         ### Output per worker per day = firm_productivity × worker_productivity × base_output_per_worker_per_day
         ### Total output = that × work_days × num_workers
         ### Revenue = total_output × price_per_product
-        revenue = ( self.productivity * avg_worker_productivity *
-                   self.work_days_per_step * self.base_output_per_worker_per_day * len(self.current_workers) *
-                   self.product_sales_price)
+        self.number_of_products = float(self.productivity * avg_worker_productivity * self.work_days_per_step * self.base_output_per_worker_per_day * len(self.current_workers))
+        revenue = ( self.number_of_products * self.product_sales_price)
         self.current_profit = revenue - total_wage_cost - self.fixed_cost - (self.vacancies * self.vacancy_cost_per_step)
 
         print(f"Firm {self.unique_id} revenue: {revenue:.2f}, wage cost: {total_wage_cost:.2f}, fixed cost: {self.fixed_cost:.2f}, vacancies: {self.vacancies}, profit: {self.current_profit:.2f}")
@@ -294,7 +293,7 @@ class LaborMarketModel(Model):
         # TODO: Skill requirement should be related to worker skill level distribution
         for i in range(self.num_firms):
             f = Firm(f"F{i}", self, capital=random.uniform(250000, 750000), productivity=random.uniform(0.75, 2.0),
-                    skill_requirement=random.uniform(0.5,2.0), fixed_cost=random.uniform(500, 1000))
+                    skill_requirement=random.uniform(0.5,2.0), fixed_cost=random.uniform(10000, 15000))
                     # TODO: Base fixed_cost on capital and productivity and/or unit cost later
             self.schedule.add(f)
             
@@ -306,6 +305,7 @@ class LaborMarketModel(Model):
             "AvgFirmSize": self.get_firm_size,
             "AvgFirmCapital": self.get_avg_firm_capital,
             "MinWage": self.get_min_wage,
+            "FirmProductNumbers": self.get_firm_product_numbers,
             # NEW: Collect lists of all values for later analysis/distribution plotting
             "AllFirmSizes": self.get_firm_sizes_list, 
             "AllFirmCapitals": self.get_firm_capitals_list,
@@ -364,3 +364,6 @@ class LaborMarketModel(Model):
     
     def get_firm_profits_list(self):
         return [f.current_profit for f in self.schedule.agents if isinstance(f, Firm)]
+    
+    def get_firm_product_numbers(self):
+        return np.mean([f.number_of_products for f in self.schedule.agents if isinstance(f, Firm)])
