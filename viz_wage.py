@@ -102,6 +102,7 @@ lineplot_component_product_numbers = make_plot_component(
     post_process=post_process_lines,
 )
 
+
 # --- Simulation setup ---
 simulator = ABMSimulator()
 model = LaborMarketModel(simulator=simulator)

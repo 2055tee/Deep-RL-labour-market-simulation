@@ -296,6 +296,14 @@ class LaborMarketModel(Model):
                     skill_requirement=random.uniform(0.5,2.0), fixed_cost=random.uniform(10000, 15000))
                     # TODO: Base fixed_cost on capital and productivity and/or unit cost later
             self.schedule.add(f)
+
+        # Helper attributes for Solara display
+        self.average_wage = 0
+        self.employment_rate = 0
+        self.starting_min_wage = min_wage
+        self.number_of_workers = N_workers
+        self.number_of_firms = N_firms
+        
             
         # Data Collector
         model_reporters={
@@ -323,10 +331,15 @@ class LaborMarketModel(Model):
         print(f"min_wage increased to {self.min_wage} at step {self.step_count}")
         self.schedule.step()
         self.datacollector.collect(self)
+        self.update_data()
         self.step_count += 1
         
     def steps(self):
         return self.step_count
+    
+    def update_data(self):
+        self.average_wage = self.compute_avg_wage()
+        self.employment_rate = self.compute_employment_rate()
 
     def compute_employment_rate(self):
         workers = [a for a in self.schedule.agents if isinstance(a, Worker)]
@@ -351,7 +364,7 @@ class LaborMarketModel(Model):
         return np.mean(firm_capitals) if firm_capitals else 0
     
     def get_min_wage(self):
-        return self.min_wage
+        return self.min_wage * 22  # monthly minimum wage
     
     def get_firm_sizes_list(self):
         return [len(f.current_workers) for f in self.schedule.agents if isinstance(f, Firm)]
