@@ -56,8 +56,6 @@ class Firm(Agent):
         revenue = (self.production() * self.product_sales_price)
         self.current_profit = revenue - total_wage_cost - self.fixed_cost
 
-        # print(f"Firm {self.unique_id} revenue: {revenue:.2f}, wage cost: {total_wage_cost:.2f}, fixed cost: {self.fixed_cost:.2f}, profit: {self.current_profit:.2f}")
-
         # update profit and capital
         self.capital += self.current_profit
         
@@ -137,11 +135,9 @@ class LaborMarketModel(Model):
             w = Worker(i, self, productivity=1, skill_level=2,
                        savings=20000, res_wage=7700) # monthly expenses
             self.schedule.add(w)
-        # TODO: Skill requirement should be related to worker skill level distribution
         for i in range(self.num_firms):
             f = Firm(f"F{i}", self, capital=random.uniform(250000, 750000), productivity=random.uniform(15000,20000),
                     skill_requirement=1, fixed_cost=random.uniform(1000, 1500), max_worker=100)
-                    # TODO: Base fixed_cost on capital and productivity and/or unit cost later
             self.schedule.add(f)
 
         # Helper attributes for Solara display
