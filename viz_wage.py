@@ -97,7 +97,10 @@ lineplot_component_min_wage = make_plot_component(
     post_process=post_process_lines,
 )
 
-
+lineplot_component_machine_investment = make_plot_component(
+    measure="AverageMachineInvestment",  # Specify the measure for the Average Machine Investment plot
+    post_process=post_process_lines,
+)
 
 
 # --- Simulation setup ---
@@ -111,7 +114,7 @@ page = SolaraViz(
     model=model,
     model_params=model_params,
     components=[lineplot_component, lineplot_component_wage, lineplot_component_profit, lineplot_component_firm_size, lineplot_component_firm_capital,
-                lineplot_component_min_wage],
+                lineplot_component_min_wage, lineplot_component_machine_investment],
 )
 
 page
