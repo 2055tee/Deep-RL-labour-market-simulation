@@ -11,14 +11,16 @@ import numpy as np
 # AGENTS
 # -------------------
 class Worker(Agent):
-    def __init__(self, unique_id, model, productivity, skill_level, savings,res_wage):
+    def __init__(self, unique_id, model, productivity, skill_level, res_wage, non_labor_income, leisure_weight):
         super().__init__(model)
         self.unique_id = unique_id
         self.productivity = productivity
         self.employed = False
-        self.reservation_wage = res_wage
+        self.reservation_wage = res_wage    # worker's minimum acceptable wage per hour
+        self.non_labor_income = non_labor_income
+        self.leisure_weight = leisure_weight
+        self.hours_worked = 0   # hours worked this month
         self.wage = 0
-        self.savings = savings
         self.skill_level = skill_level
 
     def step(self):
@@ -29,7 +31,7 @@ class Worker(Agent):
             all_available_firms = [a for a in self.model.schedule.agents if isinstance(a, Firm)]
             
             for f in all_available_firms:
-                    f.applying_workers.append(self) 
+                    f.applying_workers.append(self)
             
                     
 
@@ -230,6 +232,7 @@ class LaborMarketModel(Model):
             self.simulator.setup(self)
         self.num_workers = N_workers
         self.num_firms = N_firms
+        self.MAX_HOURS = 8 * 6 * 4  # (192 hours) Max working hours per month (assumed 8 hours/day * 6 days/week * 4 weeks)
         self.min_wage = min_wage
         self.step_count = 0
         self.running = True # Needed for Mesa to know the model is running
@@ -239,7 +242,7 @@ class LaborMarketModel(Model):
         # Create agents
         for i in range(self.num_workers):
             w = Worker(i, self, productivity=1, skill_level=2,
-                       savings=20000, res_wage=7700) # monthly expenses
+                       non_labor_income=random.uniform(0, 1000), leisure_weight=random.uniform(0.3, 0.7), res_wage=random.uniform(25, 50))
             self.schedule.add(w)
         for i in range(self.num_firms):
             f = Firm(f"F{i}", self, capital=random.uniform(45000, 75000), productivity=random.uniform(400,700),
