@@ -11,7 +11,7 @@ import numpy as np
 # AGENTS
 # -------------------
 class Worker(Agent):
-    def __init__(self, unique_id, model, productivity, skill_level, res_wage, non_labor_income, leisure_weight):
+    def __init__(self, unique_id, model, productivity, skill_level, working_hours, res_wage, non_labor_income, leisure_weight):
         super().__init__(model)
         self.unique_id = unique_id
         self.productivity = productivity
@@ -19,9 +19,38 @@ class Worker(Agent):
         self.reservation_wage = res_wage    # worker's minimum acceptable wage per hour
         self.non_labor_income = non_labor_income
         self.leisure_weight = leisure_weight
-        self.hours_worked = 0   # hours worked this month
+        self.hours_worked = 0  # hours worked in the current month
         self.wage = 0
         self.skill_level = skill_level
+
+    def calculate_leisure(self):
+        return self.model.MAX_HOURS - self.hours_worked
+    
+    def cobb_douglas_utility(self, consumption, leisure, beta):
+        # Avoid zero values (important for numerical stability)
+        consumption = max(consumption, 1e-6)
+        leisure = max(leisure, 1e-6) 
+        return (consumption ** beta) * (leisure ** (1 - beta))
+    
+    def choose_hours(self, wage, beta):
+        # Typical labor econ values:
+        # beta ≈ 0.6–0.8 → consumption-focused
+        # 1−beta reflects leisure preference
+
+        possible_hours = [0, 40, 80, 120, 160]  # Possible working hours per month
+        best_hours = 0
+        best_utility = -float('inf')
+
+        for h in possible_hours:
+            consumption = (wage * h) + self.non_labor_income
+            leisure = self.model.MAX_HOURS - h
+            utility = self.cobb_douglas_utility(consumption, leisure, beta)
+
+            if utility > best_utility:
+                best_utility = utility
+                best_hours = h
+
+        return best_hours
 
     def step(self):
 
@@ -33,9 +62,45 @@ class Worker(Agent):
             for f in all_available_firms:
                     f.applying_workers.append(self)
             
-                    
-
 class Firm(Agent):
+    def __init__(self, unique_id, model, productivity, output_price, skill_requirement):
+        super().__init__(model)
+        self.unique_id = unique_id
+        self.base_productivity = 500
+        self.productivity_multiplier = productivity
+        self.output_price = output_price
+        self.skill_requirement = skill_requirement
+        self.applying_workers = []
+        self.current_workers = []
+
+    def production_output(self, A, labor, alpha):
+        # Cobb-Douglas production function: Q = A * L^alpha
+        return A * (labor ** alpha)
+    
+    def marginal_product_labor(self, A, labor, alpha):
+        # Marginal Product of Labor: MPL = dQ/dL = A * alpha * L^(alpha - 1)
+        if labor == 0:
+            return 0
+        return A * alpha * (labor ** (alpha - 1))
+    
+    def value_of_marginal_product(price, mpl):
+        return price * mpl
+    
+    # hiring rule
+    # if vmp_l >= wage:
+    # hire_more()
+
+    # Parameter	Typical value	            Why
+    # A	        500–1000	                Scales output to wage levels
+    # α	        0.6–0.8	                    Strong diminishing returns
+    # price	    1.0	                        Normalization
+
+    # def marginal_product_labor(self):
+    #     num_workers = len(self.current_workers)
+    #     return self.productivity / (num_workers + 1)
+
+
+class Firm_Old(Agent):
     def __init__(self, unique_id, model, capital, productivity, skill_requirement, fixed_cost, max_worker):
         super().__init__(model)
         self.unique_id = unique_id
@@ -241,12 +306,12 @@ class LaborMarketModel(Model):
         
         # Create agents
         for i in range(self.num_workers):
-            w = Worker(i, self, productivity=1, skill_level=2,
+            w = Worker(i, self, productivity=1, skill_level=2, working_hours=random.choice([0, 80, 120, 160]),
                        non_labor_income=random.uniform(0, 1000), leisure_weight=random.uniform(0.3, 0.7), res_wage=random.uniform(25, 50))
             self.schedule.add(w)
         for i in range(self.num_firms):
-            f = Firm(f"F{i}", self, capital=random.uniform(45000, 75000), productivity=random.uniform(400,700),
-                    skill_requirement=1, fixed_cost=random.uniform(1000, 1500), max_worker=100)
+            f = Firm(f"F{i}", self, capital=random.uniform(45000, 75000), productivity=random.uniform(0.8, 1.2),
+                    skill_requirement=1, output_price=1.0)
             self.schedule.add(f)
 
         def labor_supply(workers, wage):
