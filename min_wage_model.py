@@ -249,6 +249,31 @@ class LaborMarketModel(Model):
                     skill_requirement=1, fixed_cost=random.uniform(1000, 1500), max_worker=100)
             self.schedule.add(f)
 
+        def labor_supply(workers, wage):
+            return sum(1 for w in workers if wage > w.reservation_wage)
+
+        def labor_demand(firms, wage):
+            demand = 0
+            for firm in firms:
+                while firm.output_price * firm.marginal_product() > wage:
+                    demand += 1
+                    firm.employment += 1
+            return demand
+
+        def find_market_clearing_wage(workers, firms, wage_grid):
+            for wage in wage_grid:
+                supply = labor_supply(workers, wage)
+                demand = labor_demand(firms, wage)
+                if abs(supply - demand) <= 1:
+                    return wage
+
+        # Find market clearing wage
+        workers = [a for a in self.schedule.agents if isinstance(a, Worker)]
+        firms = [a for a in self.schedule.agents if isinstance(a, Firm)]
+        wage_grid = np.arange(20, 100, 2)  # hourly wage grid from 20 Baht to 100 Baht
+        market_clearing_wage = find_market_clearing_wage(workers, firms, wage_grid)
+        print(f"Estimated Market Clearing Wage: {market_clearing_wage}")
+
         # Helper attributes for Solara display
         self.average_wage = 0
         self.employment_rate = 0
