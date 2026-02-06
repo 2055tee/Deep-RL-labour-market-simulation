@@ -11,14 +11,14 @@ import numpy as np
 # AGENTS
 # -------------------
 class Worker(Agent):
-    def __init__(self, unique_id, model, productivity, skill_level, working_hours, res_wage, non_labor_income, leisure_weight):
+    def __init__(self, unique_id, model, productivity, skill_level, non_labor_income, consumption_weight):
         super().__init__(model)
         self.unique_id = unique_id
-        self.productivity = productivity
         self.employed = False
-        self.reservation_wage = res_wage    # worker's minimum acceptable wage per hour
-        self.non_labor_income = non_labor_income
-        self.leisure_weight = leisure_weight
+
+        self.productivity = productivity
+        self.non_labor_income = non_labor_income # monthly non-labor income V
+        self.alpha = consumption_weight  # weight on share of income spent on consumption
         self.hours_worked = 0  # hours worked in the current month
         self.wage = 0
         self.skill_level = skill_level
@@ -26,13 +26,14 @@ class Worker(Agent):
     def calculate_leisure(self):
         return self.model.MAX_HOURS - self.hours_worked
     
-    def cobb_douglas_utility(self, consumption, leisure, beta):
+    def cobb_douglas_utility(self, consumption, leisure):
         # Avoid zero values (important for numerical stability)
         consumption = max(consumption, 1e-6)
         leisure = max(leisure, 1e-6) 
-        return (consumption ** beta) * (leisure ** (1 - beta))
+        return (consumption ** self.alpha) * (leisure ** (1 - self.alpha))
     
-    def choose_hours(self, wage, beta):
+    
+    def choose_hours(self, wage):
         # Typical labor econ values:
         # beta ≈ 0.6–0.8 → consumption-focused
         # 1−beta reflects leisure preference
@@ -44,7 +45,7 @@ class Worker(Agent):
         for h in possible_hours:
             consumption = (wage * h) + self.non_labor_income
             leisure = self.model.MAX_HOURS - h
-            utility = self.cobb_douglas_utility(consumption, leisure, beta)
+            utility = self.cobb_douglas_utility(consumption, leisure)
 
             if utility > best_utility:
                 best_utility = utility
@@ -66,22 +67,33 @@ class Firm(Agent):
     def __init__(self, unique_id, model, productivity, output_price, skill_requirement):
         super().__init__(model)
         self.unique_id = unique_id
+
+        self.capital = 100000  # initial capital
         self.base_productivity = 500
         self.productivity_multiplier = productivity
         self.output_price = output_price
+        self.productivity = self.base_productivity * self.productivity_multiplier
+        self.alpha = 0.65  # labor share
+
         self.skill_requirement = skill_requirement
         self.applying_workers = []
         self.current_workers = []
 
-    def production_output(self, A, labor, alpha):
-        # Cobb-Douglas production function: Q = A * L^alpha
-        return A * (labor ** alpha)
+    def produce(self):
+        labor = sum(w.hours_worked for w in self.current_workers) # total labor input in hours
+        labor = max(labor, 1e-6)  # Avoid zero labor input
+
+        # Cobb-Douglas production function: Q = A * K^(1-alpha) * L^alpha 
+        output = self.productivity * (self.capital ** (1 - self.alpha)) * (labor ** self.alpha)
+        return output
+    
     
     def marginal_product_labor(self, A, labor, alpha):
-        # Marginal Product of Labor: MPL = dQ/dL = A * alpha * L^(alpha - 1)
+        # Marginal Product of Labor: MPL = dQ/dL = A * alpha * K^beta * L^(alpha-1)
         if labor == 0:
             return 0
-        return A * alpha * (labor ** (alpha - 1))
+        return A * alpha * (self.capital ** (1 - alpha)) * (labor ** (alpha - 1))
+        
     
     def value_of_marginal_product(price, mpl):
         return price * mpl
@@ -306,8 +318,8 @@ class LaborMarketModel(Model):
         
         # Create agents
         for i in range(self.num_workers):
-            w = Worker(i, self, productivity=1, skill_level=2, working_hours=random.choice([0, 80, 120, 160]),
-                       non_labor_income=random.uniform(0, 1000), leisure_weight=random.uniform(0.3, 0.7), res_wage=random.uniform(25, 50))
+            w = Worker(i, self, productivity=1, skill_level=2, 
+                       non_labor_income=random.uniform(0, 1000), consumption_weight=random.uniform(0.3, 0.7))
             self.schedule.add(w)
         for i in range(self.num_firms):
             f = Firm(f"F{i}", self, capital=random.uniform(45000, 75000), productivity=random.uniform(0.8, 1.2),
