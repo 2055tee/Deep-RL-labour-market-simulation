@@ -32,7 +32,28 @@ class Worker(Agent):
         leisure = max(leisure, 1e-6) 
         return (consumption ** self.alpha) * (leisure ** (1 - self.alpha))
     
-    
+    def search_for_job(self):
+        # Reservation wage based on non-labor income and preferences
+        leisure_if_unemployed = self.model.MAX_HOURS
+        consumption_if_unemployed = self.non_labor_income
+        utility_if_unemployed = self.cobb_douglas_utility(consumption_if_unemployed, leisure_if_unemployed)
+
+        # Find reservation wage by iterating over possible wages
+        possible_wages = range(1000, 20000, 500)  # Monthly wage grid
+        reservation_wage = 0
+
+        for wage in possible_wages:
+            hours = self.choose_hours(wage)
+            consumption = (wage * hours) + self.non_labor_income
+            leisure = self.model.MAX_HOURS - hours
+            utility = self.cobb_douglas_utility(consumption, leisure)
+
+            if utility >= utility_if_unemployed:
+                reservation_wage = wage
+                break
+
+        self.reservation_wage = reservation_wage
+
     def choose_hours(self, wage):
         # Typical labor econ values:
         # beta ≈ 0.6–0.8 → consumption-focused
@@ -69,7 +90,8 @@ class Firm(Agent):
         self.unique_id = unique_id
 
         self.capital = 100000  # initial capital
-        self.base_productivity = 500
+        self.rental_rate = 0.01  # cost of capital rental per time step
+        self.base_productivity = 500 
         self.productivity_multiplier = productivity
         self.output_price = output_price
         self.productivity = self.base_productivity * self.productivity_multiplier
@@ -94,10 +116,47 @@ class Firm(Agent):
             return 0
         return A * alpha * (self.capital ** (1 - alpha)) * (labor ** (alpha - 1))
         
+    def marginal_product_capital(self, A, labor, alpha):
+        # Marginal Product of Capital: MPK = dQ/dK = A * (1-alpha) * K^(-alpha) * L^alpha
+        if self.capital == 0:
+            return 0
+        return A * (1 - alpha) * (self.capital ** (-alpha)) * (labor ** alpha)
     
-    def value_of_marginal_product(price, mpl):
-        return price * mpl
+    def value_of_marginal_product(price, mp):
+        return price * mp
     
+    def adjust_capital(self, labor, rental_rate):
+        mpk = self.marginal_product_capital(self.productivity, labor, self.alpha)
+        vmpk = self.value_of_marginal_product(self.output_price, mpk)
+        
+        if vmpk > rental_rate:
+            # invest more in capital
+            self.capital *= 1.05  # increase capital by 5%
+        elif vmpk < rental_rate:
+            # reduce capital
+            self.capital *= 0.95  # decrease capital by 5%
+
+        # if vmpk > rental_rate:
+        #     self.capital += self.investment_step
+        # elif vmpk < rental_rate:
+        #     self.capital = max(0, self.capital - self.investment_step)
+
+    def post_vacancies(self, wage):
+        # Calculate current labor input
+        labor = sum(w.hours_worked for w in self.current_workers)
+        labor = max(labor, 1e-6)  # Avoid zero labor input
+
+        vacancies = 0
+        mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
+        vmp_l = self.value_of_marginal_product(self.output_price, mpl)
+        while vmp_l >= wage:
+            vacancies += 1
+            labor += 40  # assume each vacancy adds 40 hours of labor
+            mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
+            vmp_l = self.value_of_marginal_product(self.output_price, mpl)
+        return vacancies
+
+        
     # hiring rule
     # if vmp_l >= wage:
     # hire_more()
@@ -211,7 +270,7 @@ class Firm_Old(Agent):
         # Change in output * price
         delta_q = tp_next - tp_current
         # print(f"Firm {self.unique_id} MRP Calculation: TP Current: {tp_current:.2f}, TP Next: {tp_next:.2f}, Delta Q: {delta_q:.2f}, MRP: {self.product_sales_price * delta_q:.2f}")
-        return self.product_sales_price * delta_q
+        return self.product_sales_price * delta_q 
     
     def MRPK(self):
         l = len(self.current_workers)
