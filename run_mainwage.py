@@ -135,14 +135,14 @@ results = []
 all_data = []
 
 
-for i in range(100):
+# for i in range(100):
     # Use a fixed seed for better comparison across different min_wage parameters
     # The 'seed' argument to LaborMarketModel will handle the model's random state
-    model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=7700, seed=42) 
-    
-    for i in range(60):  # 24 steps per simulation
-        # print(f"************************Step {i+1} for min_wage {min_wage}************************")
-        model.step()
+model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=7700, seed=42) 
+
+for i in range(60):  # 24 steps per simulation
+    # print(f"************************Step {i+1} for min_wage {min_wage}************************")
+    model.step()
         
         # # collect all data at each step
         # data = model.datacollector.get_model_vars_dataframe()
