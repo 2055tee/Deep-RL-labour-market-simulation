@@ -1,5 +1,5 @@
 from mesa import Model, Agent
-from mesa.time import RandomActivation
+from mesa.time import RandomActivation, StagedActivation
 from mesa.datacollection import DataCollector
 from mesa.experimental.devs import ABMSimulator
 from mesa.space import MultiGrid
@@ -11,17 +11,20 @@ import numpy as np
 # AGENTS
 # -------------------
 class Worker(Agent):
-    def __init__(self, unique_id, model, productivity, skill_level, non_labor_income, consumption_weight):
-        super().__init__(model)
+    def __init__(self, unique_id, model, productivity, skill_level, hours_worked, non_labor_income, consumption_weight):
+        super().__init__(unique_id, model)  #TODO Is this correct to add unique_id here?
         self.unique_id = unique_id
         self.employed = False
+        self.employer = None
 
         self.productivity = productivity
         self.non_labor_income = non_labor_income # monthly non-labor income V
         self.alpha = consumption_weight  # weight on share of income spent on consumption
-        self.hours_worked = 0  # hours worked in the current month
+        self.hours_worked = hours_worked  # hours worked in the current month (currently fixed at 160)
         self.wage = 0
         self.skill_level = skill_level
+
+        self.ON_THE_JOB_SEARCH_PROB = 0.1  # probability of searching for a new job while employed
 
     def calculate_leisure(self):
         return self.model.MAX_HOURS - self.hours_worked
@@ -32,73 +35,93 @@ class Worker(Agent):
         leisure = max(leisure, 1e-6) 
         return (consumption ** self.alpha) * (leisure ** (1 - self.alpha))
     
-    def search_for_job(self):
-        # Reservation wage based on non-labor income and preferences
-        leisure_if_unemployed = self.model.MAX_HOURS
-        consumption_if_unemployed = self.non_labor_income
-        utility_if_unemployed = self.cobb_douglas_utility(consumption_if_unemployed, leisure_if_unemployed)
-
-        # Find reservation wage by iterating over possible wages
-        possible_wages = range(1000, 20000, 500)  # Monthly wage grid
-        reservation_wage = 0
-
-        for wage in possible_wages:
-            hours = self.choose_hours(wage)
-            consumption = (wage * hours) + self.non_labor_income
-            leisure = self.model.MAX_HOURS - hours
-            utility = self.cobb_douglas_utility(consumption, leisure)
-
-            if utility >= utility_if_unemployed:
-                reservation_wage = wage
-                break
-
-        self.reservation_wage = reservation_wage
-
-    def choose_hours(self, wage):
-        # Typical labor econ values:
-        # beta ≈ 0.6–0.8 → consumption-focused
-        # 1−beta reflects leisure preference
-
-        possible_hours = [0, 40, 80, 120, 160]  # Possible working hours per month
-        best_hours = 0
-        best_utility = -float('inf')
-
-        for h in possible_hours:
-            consumption = (wage * h) + self.non_labor_income
-            leisure = self.model.MAX_HOURS - h
-            utility = self.cobb_douglas_utility(consumption, leisure)
-
-            if utility > best_utility:
-                best_utility = utility
-                best_hours = h
-
-        return best_hours
-
-    def step(self):
-
+    def search_for_jobs(self, firms):
         if self.employed:
-            return 
-        else :
-            all_available_firms = [a for a in self.model.schedule.agents if isinstance(a, Firm)]
+            if random.random() > self.ON_THE_JOB_SEARCH_PROB:
+                return
+            else:
+                # Consider switching jobs
+                # TODO: Implement job switching logic later
+                # TODO: Consider whether to make this worker search again every step after this for realism?
+                pass
+
+        acceptable_firms = []
+
+        utility_if_not_work = self.utility_if_not_work()
+        for firm in firms:
+            if firm.vacancies > 0:
+                if self.utility_if_work(firm.wage) > utility_if_not_work:
+                    acceptable_firms.append(firm)
+
+        if acceptable_firms:
+            chosen_firm = max(
+                acceptable_firms,
+                key=lambda f: self.utility_if_work(f.wage)
+            )
+            chosen_firm.applicants.append(self)
+
+    def utility_if_work(self, wage):
+        consumption = wage * self.hours_worked + self.non_labor_income
+        leisure = self.model.MAX_HOURS - self.hours_worked
+        return (consumption ** self.gamma) * (leisure ** (1 - self.gamma))
+
+    def utility_if_not_work(self):
+        consumption = self.non_labor_income
+        leisure = self.model.MAX_HOURS
+        return (consumption ** self.gamma) * (leisure ** (1 - self.gamma))
+
+
+    # def choose_hours(self, wage):
+    #     # Typical labor econ values:
+    #     # beta ≈ 0.6–0.8 → consumption-focused
+    #     # 1−beta reflects leisure preference
+
+    #     possible_hours = [0, 40, 80, 120, 160]  # Possible working hours per month
+    #     best_hours = 0
+    #     best_utility = -float('inf')
+
+    #     for h in possible_hours:
+    #         consumption = (wage * h) + self.non_labor_income
+    #         leisure = self.model.MAX_HOURS - h
+    #         utility = self.cobb_douglas_utility(consumption, leisure)
+
+    #         if utility > best_utility:
+    #             best_utility = utility
+    #             best_hours = h
+
+    #     return best_hours
+
+    def job_search_step(self):
+        all_firms = [a for a in self.model.schedule.agents if isinstance(a, Firm)]
+        self.search_for_jobs(all_firms)
+
+    # def step(self):
+
+    #     if self.employed:
+    #         return 
+    #     else :
+    #         all_available_firms = [a for a in self.model.schedule.agents if isinstance(a, Firm)]
             
-            for f in all_available_firms:
-                    f.applying_workers.append(self)
+    #         for f in all_available_firms:
+    #                 f.applicants.append(self)
             
 class Firm(Agent):
-    def __init__(self, unique_id, model, productivity, output_price, skill_requirement):
-        super().__init__(model)
+    def __init__(self, unique_id, model, capital, productivity, output_price, wage, skill_requirement):
+        super().__init__(unique_id, model) #TODO Note: changed to pass model instead of self (Is this correct to add unique_id here?)
         self.unique_id = unique_id
 
-        self.capital = 100000  # initial capital
+        self.capital = capital  # initial capital
         self.rental_rate = 0.01  # cost of capital rental per time step
         self.base_productivity = 500 
         self.productivity_multiplier = productivity
         self.output_price = output_price
+        self.wage = wage
         self.productivity = self.base_productivity * self.productivity_multiplier
         self.alpha = 0.65  # labor share
 
         self.skill_requirement = skill_requirement
-        self.applying_workers = []
+        self.vacancies = 0
+        self.applicants = []
         self.current_workers = []
 
     def produce(self):
@@ -108,7 +131,6 @@ class Firm(Agent):
         # Cobb-Douglas production function: Q = A * K^(1-alpha) * L^alpha 
         output = self.productivity * (self.capital ** (1 - self.alpha)) * (labor ** self.alpha)
         return output
-    
     
     def marginal_product_labor(self, A, labor, alpha):
         # Marginal Product of Labor: MPL = dQ/dL = A * alpha * K^beta * L^(alpha-1)
@@ -122,10 +144,11 @@ class Firm(Agent):
             return 0
         return A * (1 - alpha) * (self.capital ** (-alpha)) * (labor ** alpha)
     
-    def value_of_marginal_product(price, mp):
+    def value_of_marginal_product(self, price, mp):
         return price * mp
     
     def adjust_capital(self, labor, rental_rate):
+        # Run every 12 steps to adjust capital based on the value of the marginal product of capital
         mpk = self.marginal_product_capital(self.productivity, labor, self.alpha)
         vmpk = self.value_of_marginal_product(self.output_price, mpk)
         
@@ -136,27 +159,71 @@ class Firm(Agent):
             # reduce capital
             self.capital *= 0.95  # decrease capital by 5%
 
-        # if vmpk > rental_rate:
-        #     self.capital += self.investment_step
-        # elif vmpk < rental_rate:
-        #     self.capital = max(0, self.capital - self.investment_step)
+    def post_vacancies(self):
+        self.applicants = []
+        self.vacancies = 0
 
-    def post_vacancies(self, wage):
-        # Calculate current labor input
-        labor = sum(w.hours_worked for w in self.current_workers)
-        labor = max(labor, 1e-6)  # Avoid zero labor input
+        current_assumed_labor = sum(w.hours_worked for w in self.current_workers)
+        FIXED_WORK_HOURS = 160  # Assuming each worker works 160 hours per month
+        while True:
+            mpl = self.marginal_product_labor(
+                self.productivity,
+                current_assumed_labor + FIXED_WORK_HOURS,
+                self.alpha
+            )
+            vmp = self.output_price * mpl
 
-        vacancies = 0
-        mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
-        vmp_l = self.value_of_marginal_product(self.output_price, mpl)
-        while vmp_l >= wage:
-            vacancies += 1
-            labor += 40  # assume each vacancy adds 40 hours of labor
-            mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
-            vmp_l = self.value_of_marginal_product(self.output_price, mpl)
-        return vacancies
+            if vmp >= self.wage:
+                self.vacancies += 1
+                # Here we just increment the count; actual hiring is handled elsewhere
+                current_assumed_labor += FIXED_WORK_HOURS
+            else:
+                break
 
-        
+    def hire(self):
+        random.shuffle(self.applicants)
+
+        hires = min(len(self.applicants), self.vacancies)
+
+        for i in range(hires):
+            worker = self.applicants[i]
+            worker.employed = True
+            worker.employer = self
+            self.current_workers.append(worker)
+            self.vacancies -= 1
+
+        self.applicants = []
+
+    def post_vacancies_step(self):
+        self.post_vacancies()
+
+    def hire_step(self):
+        self.hire()
+
+    def step(self):
+        # Production phase
+        output = self.produce()
+        revenue = output * self.output_price
+
+        # Wage payment ()
+        total_wage_cost = sum(w.wage for w in self.current_workers)
+        for w in self.current_workers:
+            w.savings += w.wage
+
+        # Capital rental cost
+        capital_cost = self.capital * self.rental_rate
+
+        # Profit calculation
+        profit = revenue - total_wage_cost - capital_cost
+        self.model.total_profit += profit
+
+        # Adjust capital every 12 steps
+        if self.model.step_count % 12 == 0:
+            total_labor = sum(w.hours_worked for w in self.current_workers)
+            self.adjust_capital(total_labor, self.rental_rate)
+
+    
+
     # hiring rule
     # if vmp_l >= wage:
     # hire_more()
@@ -372,17 +439,17 @@ class LaborMarketModel(Model):
         self.min_wage = min_wage
         self.step_count = 0
         self.running = True # Needed for Mesa to know the model is running
-        self.schedule = RandomActivation(self)
+        self.schedule = StagedActivation(self, stage_list=["post_vacancies_step", "job_search_step", "hire_step", "step"], shuffle=False)  #TODO Update list of stages later
         random.seed(seed)
         
         # Create agents
         for i in range(self.num_workers):
-            w = Worker(i, self, productivity=1, skill_level=2, 
+            w = Worker(i, self, productivity=1, skill_level=2, hours_worked=160,
                        non_labor_income=random.uniform(0, 1000), consumption_weight=random.uniform(0.3, 0.7))
             self.schedule.add(w)
         for i in range(self.num_firms):
-            f = Firm(f"F{i}", self, capital=random.uniform(45000, 75000), productivity=random.uniform(0.8, 1.2),
-                    skill_requirement=1, output_price=1.0)
+            f = Firm(f"F{i}", self, capital=random.uniform(75000, 125000), productivity=random.uniform(0.8, 1.2),
+                    skill_requirement=1, output_price=1.0, wage=(self.min_wage*random.uniform(1.0, 1.2)))
             self.schedule.add(f)
 
         def labor_supply(workers, wage):
@@ -493,4 +560,3 @@ class LaborMarketModel(Model):
     def get_avg_machine_investment(self):
         machine_investments = [f.machine_investment for f in self.schedule.agents if isinstance(f, Firm)]
         return np.mean(machine_investments) if machine_investments else 0
-    
