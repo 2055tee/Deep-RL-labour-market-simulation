@@ -41,6 +41,7 @@ class Worker(Agent):
                 return
             else:
                 # Consider switching jobs
+                print(f"Worker {self.unique_id} is considering switching jobs.")
                 # TODO: Implement job switching logic later
                 # TODO: Consider whether to make this worker search again every step after this for realism?
                 pass
@@ -205,10 +206,12 @@ class Firm(Agent):
         output = self.produce()
         revenue = output * self.output_price
 
-        # Wage payment ()
+        # Wage cost
         total_wage_cost = sum(w.wage for w in self.current_workers)
-        for w in self.current_workers:
-            w.savings += w.wage
+        
+        # Distribute wages to workers
+        # for w in self.current_workers:
+        #     w.savings += w.wage
 
         # Capital rental cost
         capital_cost = self.capital * self.rental_rate
