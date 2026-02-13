@@ -107,7 +107,7 @@ class Worker(Agent):
     #                 f.applicants.append(self)
             
 class Firm(Agent):
-    def __init__(self, unique_id, model, capital, productivity, output_price, wage, skill_requirement):
+    def __init__(self, unique_id, model, capital, productivity, output_price, skill_requirement):
         super().__init__(unique_id, model) #TODO Note: changed to pass model instead of self (Is this correct to add unique_id here?)
         self.unique_id = unique_id
 
@@ -116,7 +116,7 @@ class Firm(Agent):
         self.base_productivity = 500 
         self.productivity_multiplier = productivity
         self.output_price = output_price
-        self.wage = wage
+        self.wage = None # will be set later based on MPL
         self.productivity = self.base_productivity * self.productivity_multiplier
         self.alpha = 0.65  # labor share
 
@@ -124,6 +124,17 @@ class Firm(Agent):
         self.vacancies = 0
         self.applicants = []
         self.current_workers = []
+
+    def set_initial_wage(self, gamma):
+        # Set initial wage based on MPL
+        labor = sum(w.hours_worked for w in self.current_workers)
+        mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
+        # gamma is the fraction of MPL paid to workers (0.7 to 0.9 typical)
+        self.wage = gamma * mpl  #  Usually gamma * (mpl * output price), but output price is 1.0 in this model to normalize
+
+        # Set worker wages accordingly
+        for w in self.current_workers:
+            w.wage = self.wage
 
     def produce(self):
         labor = sum(w.hours_worked for w in self.current_workers) # total labor input in hours
@@ -452,8 +463,26 @@ class LaborMarketModel(Model):
             self.schedule.add(w)
         for i in range(self.num_firms):
             f = Firm(f"F{i}", self, capital=random.uniform(75000, 125000), productivity=random.uniform(0.8, 1.2),
-                    skill_requirement=1, output_price=1.0, wage=(self.min_wage*random.uniform(1.0, 1.2)))
+                    skill_requirement=1, output_price=1.0, )
             self.schedule.add(f)
+
+        # Add initial workers to firms. Each firm gets between 3-5 workers to start
+        all_workers = [a for a in self.schedule.agents if isinstance(a, Worker)]
+        all_firms = [a for a in self.schedule.agents if isinstance(a, Firm)]
+        random.shuffle(all_workers)
+        for firm in all_firms:
+            initial_hires = random.randint(3, 5)
+            for _ in range(initial_hires):
+                if all_workers:
+                    worker = all_workers.pop()
+                    worker.employed = True
+                    worker.employer = firm
+                    # Worker wage is set based on firm's initial wage setting
+                    firm.current_workers.append(worker)
+
+        # Set initial wages for firms and their workers
+        for firm in all_firms:
+            firm.set_initial_wage(gamma=0.8)  # Pay 80% of MPL initially
 
         def labor_supply(workers, wage):
             return sum(1 for w in workers if wage > w.reservation_wage)
