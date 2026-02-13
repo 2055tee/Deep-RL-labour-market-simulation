@@ -29,6 +29,10 @@ class Worker(Agent):
     def calculate_leisure(self):
         return self.model.MAX_HOURS - self.hours_worked
     
+    def calculate_switching_cost(self):
+        # Switching cost is a percentage of monthly wage, curently set at 5% but can be tuned as needed (2-10% of monthly wage). This represents the cost (in time, effort, risk) of switching jobs.
+        return self.wage * 0.05  # 5% of monthly wage as switching cost, can be tuned as needed
+
     def cobb_douglas_utility(self, consumption, leisure):
         # Avoid zero values (important for numerical stability)
         consumption = max(consumption, 1e-6)
@@ -51,7 +55,8 @@ class Worker(Agent):
         utility_if_not_work = self.utility_if_not_work()
         for firm in firms:
             if firm.vacancies > 0:
-                if self.utility_if_work(firm.wage) > utility_if_not_work:
+                # Consider the utility of working at this firm and compare to not working and switching cost
+                if self.utility_if_work(firm.wage) - self.calculate_switching_cost() > utility_if_not_work:
                     acceptable_firms.append(firm)
 
         if acceptable_firms:
@@ -94,7 +99,16 @@ class Worker(Agent):
 
     def job_search_step(self):
         all_firms = [a for a in self.model.schedule.agents if isinstance(a, Firm)]
-        self.search_for_jobs(all_firms)
+        # Assume workers have limited information and only consider 10% of firms randomly each step
+        # If worker is already employed, the firm they work for is always in the considered set to allow for on-the-job search
+
+        if self.employed:
+            firms_to_consider = random.sample([f for f in all_firms if f != self.employer], max(1, (len(all_firms) - 1) // 10))
+            firms_to_consider.append(self.employer)
+        else:
+            firms_to_consider = random.sample(all_firms, max(1, len(all_firms) // 10))
+
+        self.search_for_jobs(firms_to_consider)
 
     # def step(self):
 
