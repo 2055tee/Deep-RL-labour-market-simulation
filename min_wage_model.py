@@ -12,7 +12,7 @@ import numpy as np
 # -------------------
 class Worker(Agent):
     def __init__(self, unique_id, model, productivity, skill_level, hours_worked, non_labor_income, consumption_weight):
-        super().__init__(unique_id, model)  #TODO Is this correct to add unique_id here?
+        super().__init__(model)
         self.unique_id = unique_id
         self.employed = False
         self.employer = None
@@ -46,9 +46,25 @@ class Worker(Agent):
             else:
                 # Consider switching jobs
                 print(f"Worker {self.unique_id} is considering switching jobs.")
-                # TODO: Implement job switching logic later
+                acceptable_firms = []
+                for firm in firms:
+                    if firm.vacancies > 0:
+                        # Consider the utility of working at this firm and compare to current job and switching cost
+                        if self.utility_if_work(firm.wage) - self.calculate_switching_cost() > self.utility_if_work(self.wage):
+                            acceptable_firms.append(firm)
+
+                if acceptable_firms:
+                    chosen_firm = max(
+                        acceptable_firms,
+                        key=lambda f: self.utility_if_work(f.wage)
+                    )
+
+                    # Apply to the chosen firm
+                    chosen_firm.applicants.append(self)
+                return  # After considering switching jobs, end the search for this step
+
                 # TODO: Consider whether to make this worker search again every step after this for realism?
-                pass
+
 
         acceptable_firms = []
 
@@ -69,12 +85,12 @@ class Worker(Agent):
     def utility_if_work(self, wage):
         consumption = wage * self.hours_worked + self.non_labor_income
         leisure = self.model.MAX_HOURS - self.hours_worked
-        return (consumption ** self.gamma) * (leisure ** (1 - self.gamma))
+        return (consumption ** self.alpha) * (leisure ** (1 - self.alpha))
 
     def utility_if_not_work(self):
         consumption = self.non_labor_income
         leisure = self.model.MAX_HOURS
-        return (consumption ** self.gamma) * (leisure ** (1 - self.gamma))
+        return (consumption ** self.alpha) * (leisure ** (1 - self.alpha))
 
 
     # def choose_hours(self, wage):
@@ -100,16 +116,23 @@ class Worker(Agent):
     def job_search_step(self):
         all_firms = [a for a in self.model.schedule.agents if isinstance(a, Firm)]
         # Assume workers have limited information and only consider 10% of firms randomly each step
-        # If worker is already employed, the firm they work for is always in the considered set to allow for on-the-job search
+        # If worker is already employed, the considered firms do not include their current employer
 
         if self.employed:
             firms_to_consider = random.sample([f for f in all_firms if f != self.employer], max(1, (len(all_firms) - 1) // 10))
-            firms_to_consider.append(self.employer)
         else:
             firms_to_consider = random.sample(all_firms, max(1, len(all_firms) // 10))
 
         self.search_for_jobs(firms_to_consider)
 
+    def post_vacancies_step(self):
+        pass
+
+    def hire_step(self):
+        pass
+
+    def onboard_workers_step(self):
+        pass
     # def step(self):
 
     #     if self.employed:
@@ -122,7 +145,7 @@ class Worker(Agent):
             
 class Firm(Agent):
     def __init__(self, unique_id, model, capital, productivity, output_price, skill_requirement):
-        super().__init__(unique_id, model) #TODO Note: changed to pass model instead of self (Is this correct to add unique_id here?)
+        super().__init__(model)
         self.unique_id = unique_id
 
         self.capital = capital  # initial capital
@@ -138,6 +161,7 @@ class Firm(Agent):
         self.vacancies = 0
         self.applicants = []
         self.current_workers = []
+        self.pending_workers = []  # Workers hired but waiting 1 step before starting work
 
     def set_initial_wage(self, gamma):
         # Set initial wage based on MPL
@@ -215,10 +239,15 @@ class Firm(Agent):
             worker = self.applicants[i]
             worker.employed = True
             worker.employer = self
-            self.current_workers.append(worker)
+            self.pending_workers.append(worker)  # Add to pending to start next step
             self.vacancies -= 1
 
         self.applicants = []
+
+    def onboard_workers_step(self):
+        """Move workers from pending to current (1-step hiring delay)"""
+        self.current_workers.extend(self.pending_workers)
+        self.pending_workers = []
 
     def post_vacancies_step(self):
         self.post_vacancies()
@@ -243,14 +272,15 @@ class Firm(Agent):
 
         # Profit calculation
         profit = revenue - total_wage_cost - capital_cost
-        self.model.total_profit += profit
+        # self.model.total_profit += profit
 
         # Adjust capital every 12 steps
         if self.model.step_count % 12 == 0:
             total_labor = sum(w.hours_worked for w in self.current_workers)
             self.adjust_capital(total_labor, self.rental_rate)
 
-    
+    def job_search_step(self):
+        pass
 
     # hiring rule
     # if vmp_l >= wage:
@@ -467,7 +497,7 @@ class LaborMarketModel(Model):
         self.min_wage = min_wage
         self.step_count = 0
         self.running = True # Needed for Mesa to know the model is running
-        self.schedule = StagedActivation(self, stage_list=["post_vacancies_step", "job_search_step", "hire_step", "step"], shuffle=False)  #TODO Update list of stages later
+        self.schedule = StagedActivation(self, stage_list=["post_vacancies_step", "job_search_step", "hire_step", "onboard_workers_step", "step"], shuffle=False)  #TODO Update list of stages later
         random.seed(seed)
         
         # Create agents
@@ -498,30 +528,30 @@ class LaborMarketModel(Model):
         for firm in all_firms:
             firm.set_initial_wage(gamma=0.8)  # Pay 80% of MPL initially
 
-        def labor_supply(workers, wage):
-            return sum(1 for w in workers if wage > w.reservation_wage)
+        # def labor_supply(workers, wage):
+        #     return sum(1 for w in workers if wage > w.reservation_wage)
 
-        def labor_demand(firms, wage):
-            demand = 0
-            for firm in firms:
-                while firm.output_price * firm.marginal_product() > wage:
-                    demand += 1
-                    firm.employment += 1
-            return demand
+        # def labor_demand(firms, wage):
+        #     demand = 0
+        #     for firm in firms:
+        #         while firm.output_price * firm.marginal_product() > wage:
+        #             demand += 1
+        #             firm.employment += 1
+        #     return demand
 
-        def find_market_clearing_wage(workers, firms, wage_grid):
-            for wage in wage_grid:
-                supply = labor_supply(workers, wage)
-                demand = labor_demand(firms, wage)
-                if abs(supply - demand) <= 1:
-                    return wage
+        # def find_market_clearing_wage(workers, firms, wage_grid):
+        #     for wage in wage_grid:
+        #         supply = labor_supply(workers, wage)
+        #         demand = labor_demand(firms, wage)
+        #         if abs(supply - demand) <= 1:
+        #             return wage
 
         # Find market clearing wage
-        workers = [a for a in self.schedule.agents if isinstance(a, Worker)]
-        firms = [a for a in self.schedule.agents if isinstance(a, Firm)]
-        wage_grid = np.arange(20, 100, 2)  # hourly wage grid from 20 Baht to 100 Baht
-        market_clearing_wage = find_market_clearing_wage(workers, firms, wage_grid)
-        print(f"Estimated Market Clearing Wage: {market_clearing_wage}")
+        # workers = [a for a in self.schedule.agents if isinstance(a, Worker)]
+        # firms = [a for a in self.schedule.agents if isinstance(a, Firm)]
+        # wage_grid = np.arange(20, 100, 2)  # hourly wage grid from 20 Baht to 100 Baht
+        # market_clearing_wage = find_market_clearing_wage(workers, firms, wage_grid)
+        # print(f"Estimated Market Clearing Wage: {market_clearing_wage}")
 
         # Helper attributes for Solara display
         self.average_wage = 0
@@ -532,31 +562,31 @@ class LaborMarketModel(Model):
         
             
         # Data Collector
-        model_reporters={
-            # Mesa reporters
-            "EmploymentRate": self.compute_employment_rate,
-            "AverageWage": self.compute_avg_wage,
-            "AverageProfit": self.compute_avg_profit,
-            "AvgFirmSize": self.get_firm_size,
-            "AvgFirmCapital": self.get_avg_firm_capital,
-            "MinWage": self.get_min_wage,
-            "AverageMachineInvestment": self.get_avg_machine_investment,
-            # NEW: Collect lists of all values for later analysis/distribution plotting
-            "AllFirmSizes": self.get_firm_sizes_list, 
-            "AllFirmCapitals": self.get_firm_capitals_list,
-            "AllEmployedWages": self.get_employed_wages_list,
-            "AllFirmProfits": self.get_firm_profits_list,
-        }
+        # model_reporters={
+        #     # Mesa reporters
+        #     "EmploymentRate": self.compute_employment_rate,
+        #     "AverageWage": self.compute_avg_wage,
+        #     "AverageProfit": self.compute_avg_profit,
+        #     "AvgFirmSize": self.get_firm_size,
+        #     "AvgFirmCapital": self.get_avg_firm_capital,
+        #     "MinWage": self.get_min_wage,
+        #     "AverageMachineInvestment": self.get_avg_machine_investment,
+        #     # NEW: Collect lists of all values for later analysis/distribution plotting
+        #     "AllFirmSizes": self.get_firm_sizes_list, 
+        #     "AllFirmCapitals": self.get_firm_capitals_list,
+        #     "AllEmployedWages": self.get_employed_wages_list,
+        #     "AllFirmProfits": self.get_firm_profits_list,
+        # }
         
-        self.datacollector = mesa.DataCollector(model_reporters)
-        self.datacollector.collect(self)
+        # self.datacollector = mesa.DataCollector(model_reporters)
+        # self.datacollector.collect(self)
     
     def step(self):
         # increase min wage over time   
         # print(f"min_wage increased to {self.min_wage} at step {self.step_count}")
         self.schedule.step()
-        self.datacollector.collect(self)
-        self.update_data()
+        # self.datacollector.collect(self)
+        # self.update_data()
         self.step_count += 1
         
     def steps(self):
