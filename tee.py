@@ -1,5 +1,5 @@
 from mesa import Model, Agent
-from mesa.time import RandomActivation
+from mesa.time import RandomActivation, StagedActivation
 from mesa.datacollection import DataCollector
 from mesa.experimental.devs import ABMSimulator
 from mesa.space import MultiGrid
@@ -11,7 +11,7 @@ import numpy as np
 # AGENTS
 # -------------------
 class Worker(Agent):
-    def __init__(self, unique_id, model, productivity, skill_level, non_labor_income, consumption_weight):
+    def __init__(self, unique_id, model, productivity, hours_worked, non_labor_income, consumption_weight):
         super().__init__(model)
         self.unique_id = unique_id
         self.employed = False
@@ -19,87 +19,87 @@ class Worker(Agent):
         self.productivity = productivity
         self.non_labor_income = non_labor_income # monthly non-labor income V
         self.alpha = consumption_weight  # weight on share of income spent on consumption
-        self.day_worked = 0  # hours worked in the current month
+        self.hours_worked = hours_worked
         self.wage = 0
-        self.skill_level = skill_level
-        self.savings = 0
-        self.reservation_wage = 0 
+        self.reservation_wage = 0
+        
+        self.probability_of_switching_job = 0.1  # probability of finding a job when already employed
 
     def calculate_leisure(self):
-        return self.model.MAX_HOURS - self.day_worked
+        return self.model.MAX_HOURS - self.hours_worked
     
     def cobb_douglas_utility(self, consumption, leisure):
         # Avoid zero values (important for numerical stability)
         consumption = max(consumption, 1e-6)
-        leisure = max(leisure, 1e-6) 
+        leisure = max(leisure, 1e-6)
         return (consumption ** self.alpha) * (leisure ** (1 - self.alpha))
     
-    def search_for_job(self):
-        # Reservation wage based on non-labor income and preferences
-        leisure_if_unemployed = self.model.MAX_HOURS
-        consumption_if_unemployed = self.non_labor_income
-        utility_if_unemployed = self.cobb_douglas_utility(consumption_if_unemployed, leisure_if_unemployed)
-
-        # Find reservation wage by iterating over possible wages
-        possible_wages = range(1000, 20000, 500)  # Monthly wage grid
-        reservation_wage = 0
-
-        for wage in possible_wages:
-            hours = self.choose_hours(wage)
-            consumption = (wage * hours) + self.non_labor_income
-            leisure = self.model.MAX_HOURS - hours
-            utility = self.cobb_douglas_utility(consumption, leisure)
-
-            if utility >= utility_if_unemployed:
-                reservation_wage = wage
-                break
-
-        self.reservation_wage = reservation_wage
-
-    def choose_hours(self, wage):
-        # Typical labor econ values:
-        # beta ≈ 0.6–0.8 → consumption-focused
-        # 1−beta reflects leisure preference
-
-        possible_hours = [0, 40, 80, 120, 160]  # Possible working hours per month
-        best_hours = 0
-        best_utility = -float('inf')
-
-        for h in possible_hours:
-            consumption = (wage * h) + self.non_labor_income
-            leisure = self.model.MAX_HOURS - h
-            utility = self.cobb_douglas_utility(consumption, leisure)
-
-            if utility > best_utility:
-                best_utility = utility
-                best_hours = h
-
-        return best_hours
-
-    def step(self):
-        if not self.employed:
-            self.search_for_job()
-
+    def search_for_jobs(self, firms):
         if self.employed:
-            return 
+            if random.random() > self.probability_of_switching_job:
+                return
+            else:
+                # Consider switching jobs
+                print(f"Worker {self.unique_id} is considering switching jobs.")
+                # TODO: Implement job switching logic later
+                # TODO: Consider whether to make this worker search again every step after this for realism?
+                pass
 
-        all_available_firms = [a for a in self.model.schedule.agents if isinstance(a, Firm)]
-        
-        for f in all_available_firms:
-            f.applying_workers.append(self)
+        acceptable_firms = []
+
+        utility_if_not_work = self.utility_if_not_work()
+        for firm in firms:
+            if firm.vacancies > 0:
+                if self.utility_if_work(firm.current_wage) > utility_if_not_work:
+                    acceptable_firms.append(firm)
+
+        if acceptable_firms:
+            chosen_firm = max(
+                acceptable_firms,
+                key=lambda f: self.utility_if_work(f.current_wage)
+            )
+            chosen_firm.applicants.append(self)
+    
+    def utility_if_work(self, wage):
+        consumption = wage * self.hours_worked + self.non_labor_income
+        leisure = self.model.MAX_HOURS - self.hours_worked
+        utility = (consumption ** self.alpha) * (leisure ** (1 - self.alpha))
+        # print(f"Worker {self.unique_id} utility if work: {utility}, wage={wage}, consumption={consumption}, leisure={leisure}")
+        return utility
+
+    def utility_if_not_work(self):
+        consumption = self.non_labor_income
+        leisure = self.model.MAX_HOURS
+        utility = (consumption ** self.alpha) * (leisure ** (1 - self.alpha))
+        # print(f"Worker {self.unique_id} utility if not work: {utility}, consumption={consumption}, leisure={leisure}")
+        return utility
+
+    def job_search_step(self):
+        all_firms = [a for a in self.model.schedule.agents if isinstance(a, Firm)]
+        self.search_for_jobs(all_firms)
+    
+    # ------------------- Cancel mesa overlapping step call -------------------
+    def pre_hiring_step(self):
+        pass
+    
+    def firm_main_step(self):
+        pass
+    
+    
 
 class Firm(Agent):
-    def __init__(self, unique_id, model, capital, productivity, skill_requirement):
+    def __init__(self, unique_id, model, capital, productivity):
         super().__init__(model)
         self.unique_id = unique_id
         self.capital = capital
         self.productivity = productivity
-        self.skill_requirement = skill_requirement
         self.product_sales_price = 2
-        self.applying_workers = []
+        self.applicants = []
         self.current_workers = []
         self.current_profit = 0
         self.machine_productivity = 0.5  # productivity factor for machines
+        self.current_wage = 45  # initial wage offer
+        self.expected_working_hours = 160
         
         self.machine_investment = capital * 0.5 
         self.capital = capital - self.machine_investment
@@ -107,100 +107,188 @@ class Firm(Agent):
         self.worker_diminishing_return = 0.65  # parameter for diminishing returns to labor
         self.machine_diminishing_return = 0.35  # parameter for diminishing returns to capital
         
-        self.machine_depreciation_rate = 0.9  # x% depreciation per time step
+        self.machine_depreciation_rate = 0.9  # x% depreciation per time step 
         self.machine_operation_cost_rate = 0.05  # y% operation cost per time step
-        self.machine_reinvestment_rate = 0.1  # reinvest 20% of profits into machines each step
+        self.machine_reinvestment_rate = 0.05  # reinvest 20% of profits into machines each step
         self.machine_interest_cost_rate = 0.08  # interest cost on machine investment
         self.machine_price = 1500
         
-
-    def step(self):
-        # Hire/Fire first
+        self.vacancies = 0
+        self.same_wage_steps = 0  # counter for steps with the same wage offer
+    
+    
+    def pre_hiring_step(self):
+        self.applicants = []
+        self.vacancies = 0
+        
         self.mrp_check()
+    
+
+    def firm_main_step(self):
+        # print(f"applicating_workers: {[w.unique_id for w in self.applicants]}")
+        
+        # Hire/Fire first
+        self.hire_workers()
         
         # production phase with current workers
         self.output = self.production()
+        # print(f"Firm {self.unique_id} produced output: {self.output:.2f}")
         
         # calculate revenue
         revenue = (self.output * self.product_sales_price)
+        
+        
+        # wage distribution
+        total_wage_cost = sum(w.wage * w.hours_worked for w in self.current_workers)
+        
+        # calculate profit
+        self.current_profit = revenue - total_wage_cost
+        print(f"Firm {self.unique_id} Revenue: {revenue:.2f}, Wage Cost: {total_wage_cost:.2f}, Profit: {self.current_profit:.2f}")
+        self.capital += self.current_profit
+        
+        # Reinvest in machines        
+        self.check_machine_reinvestment()
+        
+        # Clear applying workers list for next step
+        self.applicants = []
+
+    def production(self):
+        l = sum(w.hours_worked for w in self.current_workers)  # effective labor input based on hours worked
+        k = self.machine_investment
+        return self.productivity * (l ** self.worker_diminishing_return) * (k ** self.machine_diminishing_return)
+
+    def MPL(self, worker_count):
+        l = (worker_count * self.expected_working_hours)  # effective labor input based on hours worked
+        k = self.machine_investment
+        return (self.productivity * self.worker_diminishing_return * (l ** (self.worker_diminishing_return - 1)) * (k ** self.machine_diminishing_return))
+    
+    def MPK(self):
+        l = sum(w.hours_worked for w in self.current_workers)  # effective labor input based on hours worked
+        k = self.machine_investment
+        if k == 0:
+            return 0
+        return (self.productivity * self.machine_diminishing_return * (l ** self.worker_diminishing_return) * (k ** (self.machine_diminishing_return - 1)))
+    
+    def MRP(self, additional_workers=1):
+
+        current_workers = len(self.current_workers)
+
+        workers_before = current_workers
+        workers_after = current_workers + additional_workers
+
+        hours_before = workers_before * self.expected_working_hours
+        hours_after = workers_after * self.expected_working_hours
+
+        production_before = self.production_from_hours(hours_before)
+        production_after = self.production_from_hours(hours_after)
+
+        return (production_after - production_before) * self.product_sales_price
+        
+    def production_from_hours(self, total_hours):
+        l = total_hours
+        k = self.machine_investment
+        return self.productivity * (l ** self.worker_diminishing_return) * (k ** self.machine_diminishing_return)
+    
+    def MRPK(self):
+        l = len(self.current_workers)
+        k_current = self.machine_investment
+        k_next = k_current * self.machine_reinvestment_rate
+        
+        # Calculate Total Product with current capital
+        if l == 0:
+            return 0
+            
+        # Total Product with current capital
+        tp_current = self.productivity * (l ** self.worker_diminishing_return) * (k_current ** self.machine_diminishing_return)
+        
+        # Total Product with one additional unit of capital
+        tp_next = self.productivity * (l ** self.worker_diminishing_return) * (k_next ** self.machine_diminishing_return)
+        
+        # Change in output * price
+        delta_q = tp_next - tp_current
+        return self.product_sales_price * delta_q
+            
+    def check_machine_reinvestment(self):
+        # check only every 12 steps (months)
+        if self.model.step_count % 12 != 0:
+            return
         
         # machine depreciation and operation costs
         operation_cost = self.machine_investment * self.machine_operation_cost_rate
         interest_cost = self.machine_investment * self.machine_interest_cost_rate
         depreciation_cost = self.machine_investment * (1 - self.machine_depreciation_rate)
         total_machine_cost = operation_cost + interest_cost + depreciation_cost
+        # depriciate existing machines
         self.machine_investment *= self.machine_depreciation_rate
+        self.current_profit -= total_machine_cost
         
-        # wage distribution
-        total_wage_cost = sum([w.wage for w in self.current_workers])
-        for w in self.current_workers:
-            w.savings += w.wage
-        
-        # calculate profit
-        self.current_profit = revenue - total_wage_cost - total_machine_cost
-        # print(f"Firm {self.unique_id} Revenue: {revenue:.2f}, Wage Cost: {total_wage_cost:.2f}, Machine Cost: {total_machine_cost:.2f}, Profit: {self.current_profit:.2f}, Machine Investment: {self.machine_investment:.2f}")
-        self.capital += self.current_profit
-        
-        # Reinvest in machines        
-        
-        # Clear applying workers list for next step
-        self.applying_workers = []
-
-    def production(self):
-        l = len(self.current_workers)
-        k = self.machine_investment
-        if len(self.current_workers) == 0 or self.machine_investment == 0:
-            return 0
-        return self.productivity * (l ** self.worker_diminishing_return) * (k ** self.machine_diminishing_return)
-
-    def MPL(self):
-        l = len(self.current_workers)
-        k = self.machine_investment
-        if l == 0:
-            return 0
-        return (self.productivity * self.worker_diminishing_return * (l ** (self.worker_diminishing_return - 1)) * (k ** self.machine_diminishing_return))
-        
-    def MRP(self):
-        l_current = len(self.current_workers)
-        l_next = l_current + 1
+        # Calculate the Marginal Revenue Product of ONE dollar of capital
+        l = max(1, len(self.current_workers))
         k = self.machine_investment
         
-        # Calculate Total Product with current workers
-        if l_current == 0:
-            tp_current = 0
-        else:
-            tp_current = self.productivity * (l_current ** self.worker_diminishing_return) * (k ** self.machine_diminishing_return)
-            
-        # Calculate Total Product if we add one more
-        tp_next = self.productivity * (l_next ** self.worker_diminishing_return) * (k ** self.machine_diminishing_return)
+        # Using the Calculus version for the 'slope' of the MPK
+        # MPK = A * beta * L^alpha * K^(beta-1)
+        mpk = self.productivity * self.machine_diminishing_return * (l ** self.worker_diminishing_return) * (k ** (self.machine_diminishing_return - 1))
+        mrpk = self.product_sales_price * mpk
         
-        # Change in output * price
-        delta_q = tp_next - tp_current
-        # print(f"Firm {self.unique_id} MRP Calculation: TP Current: {tp_current:.2f}, TP Next: {tp_next:.2f}, Delta Q: {delta_q:.2f}, MRP: {self.product_sales_price * delta_q:.2f}")
-        return self.product_sales_price * delta_q 
+        # User Cost (r) per step: Interest + Depreciation + Ops
+        r = self.machine_interest_cost_rate + (1 - self.machine_depreciation_rate) + self.machine_operation_cost_rate
+        
+        # STOP GROWING if the benefit (mrpk) is less than the cost (r)
+        if mrpk > r:
+            # Invest only enough to move toward the equilibrium
+            potential_investment = self.current_profit * self.machine_reinvestment_rate
+            if potential_investment > 0:
+                self.machine_investment += potential_investment
+                self.capital -= potential_investment
             
     def mrp_check(self):
-        mrp = self.MRP()
+        labor_cost = self.current_wage * self.model.worker_hours_worked_per_month
         
-        if len(self.current_workers) == 0:
-            if mrp > (self.model.min_wage * 0.5): # Be a bit more lenient for the first hire
-                self.hire_one_worker()
-        elif mrp >= self.model.min_wage and self.capital > self.model.min_wage:
-            self.hire_one_worker()
-        elif mrp < self.model.min_wage and len(self.current_workers) > 0:
+        new_hirings = 0
+        
+        # check current MRP against minimum wage and determine whether to fire worker or not
+        if self.MRP() < labor_cost and len(self.current_workers) > 0 and self.current_profit < 0:
             self.fire_worker()
+            return 0
+        
+        
+        while True:
+            mrp = self.MRP(new_hirings + 1)
+            # print(f"Firm {self.unique_id} checking MRP for hiring {new_hirings + 1} workers: MRP = {mrp:.2f} vs Labor Cost = {self.current_wage * self.model.worker_hours_worked_per_month * (new_hirings + 1):.2f}")
+            if mrp < self.current_wage * self.model.worker_hours_worked_per_month * (new_hirings + 1):
+                break
+            new_hirings += 1
+        
+        self.vacancies = new_hirings
+        return new_hirings
+      
+            
     
-    def hire_one_worker(self):
-        for w in self.applying_workers:
-            if w.employed:
-                continue
-            if w.skill_level >= self.skill_requirement and self.model.min_wage >= w.reservation_wage:
+    def hire_workers(self):
+        # if hire worker at the same wage for 3 steps and no worker increase wage by 500
+        # if self.vacancies <= 0:
+        #     return
+        # if self.vacancies > 0:
+        #     if self.same_wage_steps >= 3:
+        #         self.current_wage += 500
+        #         self.same_wage_steps = 0
+        #     else:
+        #         self.same_wage_steps += 1
+        
+        
+        # randomly hire from applying workers up to new_hirings
+        random.shuffle(self.applicants)
+        for w in self.applicants:
+            if self.vacancies <= 0:
+                break
+            if not w.employed and w.reservation_wage <= self.current_wage:
                 w.employed = True
-                w.wage = self.model.min_wage
+                w.wage = self.current_wage
                 self.current_workers.append(w)
+                self.vacancies -= 1
                 # print(f"Firm {self.unique_id} hired Worker {w.unique_id} at wage {w.wage}")
-                return True
-        return False
+        
     
     def fire_worker(self):
         w = random.choice(self.current_workers)
@@ -209,58 +297,61 @@ class Firm(Agent):
         self.current_workers.remove(w)
         # print(f"Firm {self.unique_id} fired Worker {w.unique_id}")
 
+    # Avoid Mesa overlapping step call
+    def job_search_step(self):
+        pass
+
 
 # -------------------
 # MODEL
 # -------------------
 class LaborMarketModel(Model):
-    def __init__(self, N_workers=1000, N_firms=10, min_wage=7700, simulator=None, seed=42):
+    def __init__(self, N_workers=1000, N_firms=10, min_wage=44, simulator=None, seed=42):
         super().__init__(seed=seed)
         if simulator:
             self.simulator = simulator
             self.simulator.setup(self)
         self.num_workers = N_workers
-        self.MAX_HOURS = 160  # max working hours per month
+        self.MAX_HOURS = 192 # max working hours per month
         self.num_firms = N_firms
         self.min_wage = min_wage
         self.step_count = 0
+        self.worker_hours_worked_per_month = 160
         self.running = True # Needed for Mesa to know the model is running
-        self.schedule = RandomActivation(self)
+        self.schedule = StagedActivation(self, stage_list=["pre_hiring_step", "job_search_step", "firm_main_step"], shuffle=False)
         random.seed(seed)
         
         # Create agents
         for i in range(self.num_workers):
-            w = Worker(i, self, productivity=1, skill_level=2, 
-                       non_labor_income=random.uniform(0, 1000), consumption_weight=random.uniform(0.3, 0.7))
+            w = Worker(i, self, productivity=1, 
+                       non_labor_income=random.uniform(0, 1000), consumption_weight=random.uniform(0.3, 0.7), hours_worked=self.worker_hours_worked_per_month)
             self.schedule.add(w)
         for i in range(self.num_firms):
-            f = Firm(f"F{i}", self, capital=random.uniform(45000, 75000), productivity=random.uniform(0.8, 1.2),
-                    skill_requirement=1)
+            f = Firm(f"F{i}", self, capital=random.uniform(45000, 75000), productivity=random.uniform(10, 12))
             self.schedule.add(f)
 
         def labor_supply(workers, wage):
             return sum(1 for w in workers if wage > w.reservation_wage)
 
-        def labor_demand(firms, wage):
+        def labor_demand(firms):
             demand = 0
             for firm in firms:
-                if firm.MRP() >= wage:
-                    demand += 1
+                demand = firm.mrp_check()
             return demand
 
-        def find_market_clearing_wage(workers, firms, wage_grid):
-            for wage in wage_grid:
-                supply = labor_supply(workers, wage)
-                demand = labor_demand(firms, wage)
-                if abs(supply - demand) <= 1:
-                    return wage
+        # def find_market_clearing_wage(workers, firms, wage_grid):
+        #     for wage in wage_grid:
+        #         supply = labor_supply(workers, wage)
+        #         demand = labor_demand(firms)
+        #         if abs(supply - demand) <= 1:
+                    # return wage
 
         # Find market clearing wage
         workers = [a for a in self.schedule.agents if isinstance(a, Worker)]
         firms = [a for a in self.schedule.agents if isinstance(a, Firm)]
         wage_grid = np.arange(20, 100, 2)  # hourly wage grid from 20 Baht to 100 Baht
-        market_clearing_wage = find_market_clearing_wage(workers, firms, wage_grid)
-        print(f"Estimated Market Clearing Wage: {market_clearing_wage}")
+        # market_clearing_wage = find_market_clearing_wage(workers, firms, wage_grid)
+        # print(f"Estimated Market Clearing Wage: {market_clearing_wage}")
 
         # Helper attributes for Solara display
         self.average_wage = 0
