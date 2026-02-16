@@ -11,18 +11,17 @@ import numpy as np
 # AGENTS
 # -------------------
 class Worker(Agent):
-    def __init__(self, unique_id, model, productivity, skill_level, hours_worked, non_labor_income, consumption_weight):
+    def __init__(self, unique_id, model, hours_worked, non_labor_income, consumption_weight):
         super().__init__(model)
         self.unique_id = unique_id
         self.employed = False
         self.employer = None
 
-        self.productivity = productivity
         self.non_labor_income = non_labor_income # monthly non-labor income V
         self.alpha = consumption_weight  # weight on share of income spent on consumption
         self.hours_worked = hours_worked  # hours worked in the current month (currently fixed at 160)
-        self.wage = 0
-        self.skill_level = skill_level
+        self.monthly_wage = 0  # monthly wage, set when employed
+        self.daily_wage = 0  # daily wage, derived from monthly wage
 
         self.ON_THE_JOB_SEARCH_PROB = 0.1  # probability of searching for a new job while employed
 
@@ -31,7 +30,7 @@ class Worker(Agent):
     
     def calculate_switching_cost(self):
         # Switching cost is a percentage of monthly wage, curently set at 5% but can be tuned as needed (2-10% of monthly wage). This represents the cost (in time, effort, risk) of switching jobs.
-        return self.wage * 0.05  # 5% of monthly wage as switching cost, can be tuned as needed
+        return self.monthly_wage * 0.05  # 5% of monthly wage as switching cost, can be tuned as needed
 
     def cobb_douglas_utility(self, consumption, leisure):
         # Avoid zero values (important for numerical stability)
@@ -50,13 +49,13 @@ class Worker(Agent):
                 for firm in firms:
                     if firm.vacancies > 0:
                         # Consider the utility of working at this firm and compare to current job and switching cost
-                        if self.utility_if_work(firm.wage) - self.calculate_switching_cost() > self.utility_if_work(self.wage):
+                        if self.utility_if_work(firm.monthly_wage) - self.calculate_switching_cost() > self.utility_if_work(self.monthly_wage):
                             acceptable_firms.append(firm)
 
                 if acceptable_firms:
                     chosen_firm = max(
                         acceptable_firms,
-                        key=lambda f: self.utility_if_work(f.wage)
+                        key=lambda f: self.utility_if_work(f.monthly_wage)
                     )
 
                     # Apply to the chosen firm
@@ -72,25 +71,25 @@ class Worker(Agent):
         for firm in firms:
             if firm.vacancies > 0:
                 # Consider the utility of working at this firm and compare to not working and switching cost
-                if self.utility_if_work(firm.wage) - self.calculate_switching_cost() > utility_if_not_work:
+                if self.utility_if_work(firm.monthly_wage) - self.calculate_switching_cost() > utility_if_not_work:
                     acceptable_firms.append(firm)
 
         if acceptable_firms:
             chosen_firm = max(
                 acceptable_firms,
-                key=lambda f: self.utility_if_work(f.wage)
+                key=lambda f: self.utility_if_work(f.monthly_wage)
             )
             chosen_firm.applicants.append(self)
 
     def utility_if_work(self, wage):
         consumption = wage * self.hours_worked + self.non_labor_income
         leisure = self.model.MAX_HOURS - self.hours_worked
-        return (consumption ** self.alpha) * (leisure ** (1 - self.alpha))
+        return self.cobb_douglas_utility(consumption, leisure)
 
     def utility_if_not_work(self):
         consumption = self.non_labor_income
         leisure = self.model.MAX_HOURS
-        return (consumption ** self.alpha) * (leisure ** (1 - self.alpha))
+        return self.cobb_douglas_utility(consumption, leisure)
 
 
     # def choose_hours(self, wage):
@@ -144,20 +143,20 @@ class Worker(Agent):
     #                 f.applicants.append(self)
             
 class Firm(Agent):
-    def __init__(self, unique_id, model, capital, productivity, output_price, skill_requirement):
+    def __init__(self, unique_id, model, capital, rental_rate, productivity, output_price):
         super().__init__(model)
         self.unique_id = unique_id
 
         self.capital = capital  # initial capital
-        self.rental_rate = 0.01  # cost of capital rental per time step
-        self.base_productivity = 500 
+        self.rental_rate = rental_rate  # cost of capital rental (THB per unit of capital per month)
+        self.base_productivity = 500  # number of output units per worker per month TODO: Tune this parameter to scale output to realistic wage levels (currently set to 500, can be adjusted based on calibration)
         self.productivity_multiplier = productivity
-        self.output_price = output_price
-        self.wage = None # will be set later based on MPL
+        self.output_price = output_price  # Fixed market price for the firm's product (set to 50 THB per unit for now, can be adjusted based on calibration)
+        self.monthly_wage = None # set based on initial MPL and updated over time, this is the wage paid to workers
+        self.daily_wage = None # derived from monthly wage, this is the wage paid to workers per day (assuming 20 working days per month)
         self.productivity = self.base_productivity * self.productivity_multiplier
         self.alpha = 0.65  # labor share
 
-        self.skill_requirement = skill_requirement
         self.vacancies = 0
         self.applicants = []
         self.current_workers = []
@@ -165,17 +164,19 @@ class Firm(Agent):
 
     def set_initial_wage(self, gamma):
         # Set initial wage based on MPL
-        labor = sum(w.hours_worked for w in self.current_workers)
+        labor = len(self.current_workers)  # number of workers
         mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
         # gamma is the fraction of MPL paid to workers (0.7 to 0.9 typical)
-        self.wage = gamma * mpl  #  Usually gamma * (mpl * output price), but output price is 1.0 in this model to normalize
+        self.monthly_wage = gamma * (mpl * self.output_price)
+        self.daily_wage = self.monthly_wage / 20  # assuming 20 working days per month
 
         # Set worker wages accordingly
         for w in self.current_workers:
-            w.wage = self.wage
+            w.monthly_wage = self.monthly_wage
+            w.daily_wage = self.daily_wage
 
     def produce(self):
-        labor = sum(w.hours_worked for w in self.current_workers) # total labor input in hours
+        labor = len(self.current_workers)  # number of workers
         labor = max(labor, 1e-6)  # Avoid zero labor input
 
         # Cobb-Douglas production function: Q = A * K^(1-alpha) * L^alpha 
@@ -213,20 +214,19 @@ class Firm(Agent):
         self.applicants = []
         self.vacancies = 0
 
-        current_assumed_labor = sum(w.hours_worked for w in self.current_workers)
-        FIXED_WORK_HOURS = 160  # Assuming each worker works 160 hours per month
+        current_assumed_labor = len(self.current_workers)
         while True:
             mpl = self.marginal_product_labor(
                 self.productivity,
-                current_assumed_labor + FIXED_WORK_HOURS,
+                current_assumed_labor + 1,  # Consider hiring one more worker
                 self.alpha
             )
             vmp = self.output_price * mpl
 
-            if vmp >= self.wage:
+            if vmp >= self.monthly_wage:
                 self.vacancies += 1
                 # Here we just increment the count; actual hiring is handled elsewhere
-                current_assumed_labor += FIXED_WORK_HOURS
+                current_assumed_labor += 1
             else:
                 break
 
@@ -261,22 +261,22 @@ class Firm(Agent):
         revenue = output * self.output_price
 
         # Wage cost
-        total_wage_cost = sum(w.wage for w in self.current_workers)
+        total_wage_cost = sum(w.monthly_wage for w in self.current_workers)
         
         # Distribute wages to workers
         # for w in self.current_workers:
-        #     w.savings += w.wage
+        #     w.savings += w.monthly_wage
 
         # Capital rental cost
         capital_cost = self.capital * self.rental_rate
 
         # Profit calculation
         profit = revenue - total_wage_cost - capital_cost
-        # self.model.total_profit += profit
+        self.model.total_profit += profit
 
         # Adjust capital every 12 steps
         if self.model.step_count % 12 == 0:
-            total_labor = sum(w.hours_worked for w in self.current_workers)
+            total_labor = len(self.current_workers)
             self.adjust_capital(total_labor, self.rental_rate)
 
     def job_search_step(self):
@@ -491,23 +491,25 @@ class LaborMarketModel(Model):
         if simulator:
             self.simulator = simulator
             self.simulator.setup(self)
+        self.step_count = 0
+        self.running = True # Needed for Mesa to know the model is running
+        self.schedule = StagedActivation(self, stage_list=["onboard_workers_step", "post_vacancies_step", "job_search_step", "hire_step", "step"], shuffle=False)  #TODO Update list of stages later
+        random.seed(seed)
+
         self.num_workers = N_workers
         self.num_firms = N_firms
         self.MAX_HOURS = 8 * 6 * 4  # (192 hours) Max working hours per month (assumed 8 hours/day * 6 days/week * 4 weeks)
         self.min_wage = min_wage
-        self.step_count = 0
-        self.running = True # Needed for Mesa to know the model is running
-        self.schedule = StagedActivation(self, stage_list=["post_vacancies_step", "job_search_step", "hire_step", "onboard_workers_step", "step"], shuffle=False)  #TODO Update list of stages later
-        random.seed(seed)
+        self.total_profit = 0  # TODO: Track total profit in the economy for analysis
         
         # Create agents
         for i in range(self.num_workers):
-            w = Worker(i, self, productivity=1, skill_level=2, hours_worked=160,
-                       non_labor_income=random.uniform(0, 1000), consumption_weight=random.uniform(0.3, 0.7))
+            w = Worker(i, self, hours_worked=160, non_labor_income=random.uniform(0, 1000), 
+                       consumption_weight=random.uniform(0.3, 0.7))
             self.schedule.add(w)
         for i in range(self.num_firms):
-            f = Firm(f"F{i}", self, capital=random.uniform(75000, 125000), productivity=random.uniform(0.8, 1.2),
-                    skill_requirement=1, output_price=1.0, )
+            f = Firm(f"F{i}", self, capital=random.uniform(100, 1500), rental_rate=5000,
+                      productivity=random.uniform(0.8, 1.2), output_price=50)  #TODO: Tune these parameters to scale output and wages to realistic levels (currently set to produce wages in the range of 20,000-40,000 THB per month, can be adjusted based on calibration)
             self.schedule.add(f)
 
         # Add initial workers to firms. Each firm gets between 3-5 workers to start
