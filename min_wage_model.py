@@ -44,7 +44,7 @@ class Worker(Agent):
                 return
             else:
                 # Consider switching jobs
-                print(f"Worker {self.unique_id} is considering switching jobs.")
+                # print(f"Worker {self.unique_id} is considering switching jobs.")
                 acceptable_firms = []
                 for firm in firms:
                     if firm.vacancies > 0:
@@ -149,7 +149,7 @@ class Firm(Agent):
 
         self.capital = capital  # initial capital
         self.rental_rate = rental_rate  # cost of capital rental (THB per unit of capital per month)
-        self.base_productivity = 200  # number of output units per worker per month TODO: Tune this parameter to scale output to realistic wage levels (currently set to 200, can be adjusted based on calibration)
+        self.base_productivity = 60  # TODO: Tune this parameter to scale output to realistic wage levels (currently set to 60, can be adjusted based on calibration)
         self.productivity_multiplier = productivity
         self.output_price = output_price  # Fixed market price for the firm's product (set to 50 THB per unit for now, can be adjusted based on calibration)
         self.monthly_wage = None # set based on initial MPL and updated over time, this is the wage paid to workers
@@ -168,6 +168,8 @@ class Firm(Agent):
         mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
         # gamma is the fraction of MPL paid to workers (0.7 to 0.9 typical)
         self.monthly_wage = gamma * (mpl * self.output_price)
+        self.monthly_wage = max(self.monthly_wage, self.model.min_wage)  # TODO: Uncomment this. Ensure initial wage is at least the minimum wage
+        print(f"Firm {self.unique_id} initial wage set to {self.monthly_wage:.2f} based on MPL of {mpl:.2f}")
         self.daily_wage = self.monthly_wage / 20  # assuming 20 working days per month
 
         # Set worker wages accordingly
@@ -202,6 +204,7 @@ class Firm(Agent):
         # Run every 12 steps to adjust capital based on the value of the marginal product of capital
         mpk = self.marginal_product_capital(self.productivity, labor, self.alpha)
         vmpk = self.value_of_marginal_product(self.output_price, mpk)
+        print(f"Firm {self.unique_id} VMPK: {vmpk:.2f}, Rental Rate: {rental_rate:.2f}")
         
         if vmpk > rental_rate:
             # invest more in capital
@@ -248,6 +251,10 @@ class Firm(Agent):
         """Move workers from pending to current (1-step hiring delay)"""
         self.current_workers.extend(self.pending_workers)
         self.pending_workers = []
+        # All workers should have the same wages based on the firm's current wage setting
+        for w in self.current_workers:
+            w.monthly_wage = self.monthly_wage
+            w.daily_wage = self.daily_wage
 
     def post_vacancies_step(self):
         self.post_vacancies()
@@ -508,8 +515,8 @@ class LaborMarketModel(Model):
                        consumption_weight=random.uniform(0.3, 0.7))
             self.schedule.add(w)
         for i in range(self.num_firms):
-            f = Firm(f"F{i}", self, capital=random.uniform(100, 1500), rental_rate=200,
-                      productivity=random.uniform(0.8, 1.2), output_price=50)  #TODO: Tune these parameters to scale output and wages to realistic levels (currently set to produce wages in the range of 20,000-40,000 THB per month, can be adjusted based on calibration)
+            f = Firm(f"F{i}", self, capital=random.uniform(10,100), rental_rate=500,
+                      productivity=random.uniform(0.8, 1.2), output_price=100)  #TODO: Tune these parameters to scale output and wages to realistic levels (currently set to produce wages in the range of 20,000-40,000 THB per month, can be adjusted based on calibration)
             self.schedule.add(f)
 
         # Add initial workers to firms. Each firm gets between 3-5 workers to start
@@ -576,7 +583,7 @@ class LaborMarketModel(Model):
             # NEW: Collect lists of all values for later analysis/distribution plotting
             "AllFirmSizes": self.get_firm_sizes_list, 
             "AllFirmCapitals": self.get_firm_capitals_list,
-            "AllEmployedWages": self.get_employed_wages_list,
+            # "AllEmployedWages": self.get_employed_wages_list,
             # "AllFirmProfits": self.get_firm_profits_list,
         }
         
@@ -604,7 +611,7 @@ class LaborMarketModel(Model):
         return len(employed) / len(workers)
 
     def compute_avg_wage(self):
-        wages = [w.monthly_wage for w in self.schedule.agents if isinstance(w, Worker)]
+        wages = [w.monthly_wage for w in self.schedule.agents if isinstance(w, Worker) and w.employed and w.monthly_wage > 0]
         return np.mean(wages) if wages else 0
 
     # def compute_avg_profit(self):
@@ -629,8 +636,8 @@ class LaborMarketModel(Model):
     def get_firm_capitals_list(self):
         return [f.capital for f in self.schedule.agents if isinstance(f, Firm)]
     
-    def get_employed_wages_list(self):
-        return [w.monthly_wage for w in self.schedule.agents if isinstance(w, Worker)]
+    # def get_employed_wages_list(self):
+    #     return [w.monthly_wage for w in self.schedule.agents if isinstance(w, Worker) and w.employed]
     
     # def get_firm_profits_list(self):
     #     return [f.current_profit for f in self.schedule.agents if isinstance(f, Firm)]
