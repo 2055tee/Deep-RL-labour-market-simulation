@@ -342,9 +342,9 @@ class Firm_Old(Agent):
         self.machine_investment *= self.machine_depreciation_rate
         
         # wage distribution
-        total_wage_cost = sum([w.wage for w in self.current_workers])
+        total_wage_cost = sum([w.monthly_wage for w in self.current_workers])
         for w in self.current_workers:
-            w.savings += w.wage
+            w.savings += w.monthly_wage
         
         # calculate profit
         self.current_profit = revenue - total_wage_cost - self.fixed_cost - total_machine_cost
@@ -564,31 +564,31 @@ class LaborMarketModel(Model):
         
             
         # Data Collector
-        # model_reporters={
-        #     # Mesa reporters
-        #     "EmploymentRate": self.compute_employment_rate,
-        #     "AverageWage": self.compute_avg_wage,
-        #     "AverageProfit": self.compute_avg_profit,
-        #     "AvgFirmSize": self.get_firm_size,
-        #     "AvgFirmCapital": self.get_avg_firm_capital,
-        #     "MinWage": self.get_min_wage,
-        #     "AverageMachineInvestment": self.get_avg_machine_investment,
-        #     # NEW: Collect lists of all values for later analysis/distribution plotting
-        #     "AllFirmSizes": self.get_firm_sizes_list, 
-        #     "AllFirmCapitals": self.get_firm_capitals_list,
-        #     "AllEmployedWages": self.get_employed_wages_list,
-        #     "AllFirmProfits": self.get_firm_profits_list,
-        # }
+        model_reporters={
+            # Mesa reporters
+            "EmploymentRate": self.compute_employment_rate,
+            "AverageWage": self.compute_avg_wage,
+            # "AverageProfit": self.compute_avg_profit,
+            "AvgFirmSize": self.get_firm_size,
+            "AvgFirmCapital": self.get_avg_firm_capital,
+            "MinWage": self.get_min_wage,
+            # "AverageMachineInvestment": self.get_avg_machine_investment,
+            # NEW: Collect lists of all values for later analysis/distribution plotting
+            "AllFirmSizes": self.get_firm_sizes_list, 
+            "AllFirmCapitals": self.get_firm_capitals_list,
+            "AllEmployedWages": self.get_employed_wages_list,
+            # "AllFirmProfits": self.get_firm_profits_list,
+        }
         
-        # self.datacollector = mesa.DataCollector(model_reporters)
-        # self.datacollector.collect(self)
+        self.datacollector = mesa.DataCollector(model_reporters)
+        self.datacollector.collect(self)
     
     def step(self):
         # increase min wage over time   
         # print(f"min_wage increased to {self.min_wage} at step {self.step_count}")
         self.schedule.step()
-        # self.datacollector.collect(self)
-        # self.update_data()
+        self.datacollector.collect(self)
+        self.update_data()
         self.step_count += 1
         
     def steps(self):
@@ -604,12 +604,12 @@ class LaborMarketModel(Model):
         return len(employed) / len(workers)
 
     def compute_avg_wage(self):
-        wages = [w.wage for w in self.schedule.agents if isinstance(w, Worker)]
+        wages = [w.monthly_wage for w in self.schedule.agents if isinstance(w, Worker)]
         return np.mean(wages) if wages else 0
 
-    def compute_avg_profit(self):
-        profits = [f.current_profit for f in self.schedule.agents if isinstance(f, Firm)]
-        return np.mean(profits) if profits else 0
+    # def compute_avg_profit(self):
+    #     profits = [f.current_profit for f in self.schedule.agents if isinstance(f, Firm)]
+    #     return np.mean(profits) if profits else 0
 
     def get_firm_size(self):
         # average number of workers per firm
@@ -630,11 +630,11 @@ class LaborMarketModel(Model):
         return [f.capital for f in self.schedule.agents if isinstance(f, Firm)]
     
     def get_employed_wages_list(self):
-        return [w.wage for w in self.schedule.agents if isinstance(w, Worker)]
+        return [w.monthly_wage for w in self.schedule.agents if isinstance(w, Worker)]
     
-    def get_firm_profits_list(self):
-        return [f.current_profit for f in self.schedule.agents if isinstance(f, Firm)]
+    # def get_firm_profits_list(self):
+    #     return [f.current_profit for f in self.schedule.agents if isinstance(f, Firm)]
     
-    def get_avg_machine_investment(self):
-        machine_investments = [f.machine_investment for f in self.schedule.agents if isinstance(f, Firm)]
-        return np.mean(machine_investments) if machine_investments else 0
+    # def get_avg_machine_investment(self):
+    #     machine_investments = [f.machine_investment for f in self.schedule.agents if isinstance(f, Firm)]
+    #     return np.mean(machine_investments) if machine_investments else 0

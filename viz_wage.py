@@ -77,10 +77,10 @@ lineplot_component_wage = make_plot_component(
     post_process=post_process_lines,
 )
 
-lineplot_component_profit = make_plot_component(
-    measure="AverageProfit",  # Specify the measure for the AverageProfit plot
-    post_process=post_process_lines,
-)
+# lineplot_component_profit = make_plot_component(
+#     measure="AverageProfit",  # Specify the measure for the AverageProfit plot
+#     post_process=post_process_lines,
+# )
 
 lineplot_component_firm_size = make_plot_component(
     measure="AvgFirmSize",  # Specify the measure for the Firm Size plot
@@ -97,10 +97,10 @@ lineplot_component_min_wage = make_plot_component(
     post_process=post_process_lines,
 )
 
-lineplot_component_machine_investment = make_plot_component(
-    measure="AverageMachineInvestment",  # Specify the measure for the Average Machine Investment plot
-    post_process=post_process_lines,
-)
+# lineplot_component_machine_investment = make_plot_component(
+#     measure="AverageMachineInvestment",  # Specify the measure for the Average Machine Investment plot
+#     post_process=post_process_lines,
+# )
 
 
 # --- Simulation setup ---
@@ -113,8 +113,8 @@ page = SolaraViz(
     simulator=simulator,
     model=model,
     model_params=model_params,
-    components=[lineplot_component, lineplot_component_wage, lineplot_component_profit, lineplot_component_firm_size, lineplot_component_firm_capital,
-                lineplot_component_min_wage, lineplot_component_machine_investment],
+    components=[lineplot_component, lineplot_component_wage, lineplot_component_firm_size, lineplot_component_firm_capital,
+                lineplot_component_min_wage],
 )
 
 page
