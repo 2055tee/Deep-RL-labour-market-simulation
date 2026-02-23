@@ -5,6 +5,21 @@ from mesa.visualization import (
     make_plot_component,
 )
 from min_wage_model import LaborMarketModel , Worker, Firm
+import solara
+import matplotlib.pyplot as plt
+
+@solara.component
+def FirmHistogram(model: LaborMarketModel):
+    print(f"Rendering FirmHistogram with {len(model.firms)} firms.")
+    fig, ax = plt.subplots()
+    firm_sizes = [len(firm.current_workers) for firm in model.firms]
+    ax.hist(firm_sizes, bins=20, color="#3498db", edgecolor="black")
+    ax.set_title(f"Distribution of Firm Sizes")
+    ax.set_xlabel("Number of Workers")
+    ax.set_ylabel("Frequency")
+    plt.tight_layout()
+    
+    return solara.FigureMatplotlib(fig)  # Re-render when the model updates
 
 # --- Agent portrayal ---
 def worker_portrayal(agent):
@@ -114,7 +129,7 @@ page = SolaraViz(
     model=model,
     model_params=model_params,
     components=[lineplot_component, lineplot_component_wage, lineplot_component_firm_size, lineplot_component_firm_capital,
-                lineplot_component_min_wage],
+                lineplot_component_min_wage, FirmHistogram],
 )
 
 page

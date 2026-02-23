@@ -537,6 +537,9 @@ class LaborMarketModel(Model):
         for firm in all_firms:
             firm.set_initial_wage(gamma=0.8)  # Pay 80% of MPL initially
 
+        self.workers = [a for a in self.schedule.agents if isinstance(a, Worker)]
+        self.firms = [a for a in self.schedule.agents if isinstance(a, Firm)]
+
         # def labor_supply(workers, wage):
         #     return sum(1 for w in workers if wage > w.reservation_wage)
 
