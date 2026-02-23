@@ -149,7 +149,7 @@ class Firm(Agent):
 
         self.capital = capital  # initial capital
         self.rental_rate = rental_rate  # cost of capital rental (THB per unit of capital per month)
-        self.base_productivity = 500  # number of output units per worker per month TODO: Tune this parameter to scale output to realistic wage levels (currently set to 500, can be adjusted based on calibration)
+        self.base_productivity = 200  # number of output units per worker per month TODO: Tune this parameter to scale output to realistic wage levels (currently set to 200, can be adjusted based on calibration)
         self.productivity_multiplier = productivity
         self.output_price = output_price  # Fixed market price for the firm's product (set to 50 THB per unit for now, can be adjusted based on calibration)
         self.monthly_wage = None # set based on initial MPL and updated over time, this is the wage paid to workers
@@ -508,7 +508,7 @@ class LaborMarketModel(Model):
                        consumption_weight=random.uniform(0.3, 0.7))
             self.schedule.add(w)
         for i in range(self.num_firms):
-            f = Firm(f"F{i}", self, capital=random.uniform(100, 1500), rental_rate=5000,
+            f = Firm(f"F{i}", self, capital=random.uniform(100, 1500), rental_rate=200,
                       productivity=random.uniform(0.8, 1.2), output_price=50)  #TODO: Tune these parameters to scale output and wages to realistic levels (currently set to produce wages in the range of 20,000-40,000 THB per month, can be adjusted based on calibration)
             self.schedule.add(f)
 
