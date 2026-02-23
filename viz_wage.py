@@ -4,12 +4,14 @@ from mesa.visualization import (
     SolaraViz,
     make_plot_component,
 )
+from mesa.visualization.utils import update_counter
 from min_wage_model import LaborMarketModel , Worker, Firm
 import solara
 import matplotlib.pyplot as plt
 
 @solara.component
 def FirmHistogram(model: LaborMarketModel):
+    update_counter.get()  # hook into the global update counter so the figure re-renders every step
     print(f"Rendering FirmHistogram with {len(model.firms)} firms.")
     fig, ax = plt.subplots()
     firm_sizes = [len(firm.current_workers) for firm in model.firms]
