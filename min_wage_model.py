@@ -170,7 +170,10 @@ class Firm(Agent):
         mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
         # gamma is the fraction of MPL paid to workers (0.7 to 0.9 typical)
         self.monthly_wage = gamma * (mpl * self.output_price)
-        self.monthly_wage = max(self.monthly_wage, self.model.min_wage)  # TODO: Uncomment this. Ensure initial wage is at least the minimum wage
+        self.monthly_wage = max(self.monthly_wage, self.model.min_wage)
+        # Make wage an integer for realism (since we're modeling in THB)
+        self.monthly_wage = int(self.monthly_wage)
+
         print(f"Firm {self.unique_id} initial wage set to {self.monthly_wage:.2f} based on MPL of {mpl:.2f}")
         self.daily_wage = self.monthly_wage / 20  # assuming 20 working days per month
 

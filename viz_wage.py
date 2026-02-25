@@ -8,6 +8,8 @@ from mesa.visualization.utils import update_counter
 from min_wage_model import LaborMarketModel , Worker, Firm
 import solara
 import matplotlib.pyplot as plt
+import pandas as pd
+
 
 @solara.component
 def FirmHistogram(model: LaborMarketModel):
@@ -20,7 +22,9 @@ def FirmHistogram(model: LaborMarketModel):
     ax.set_ylabel("Frequency")
     fig.subplots_adjust(bottom=0.2)
     plt.tight_layout()
-    return solara.FigureMatplotlib(fig)
+    out = solara.FigureMatplotlib(fig)
+    plt.close(fig)
+    return out
    
    
    
@@ -38,7 +42,9 @@ def FirmWageHistogram(model: LaborMarketModel):
     ax.set_ylabel("Frequency")
     fig.subplots_adjust(bottom=0.2)
     plt.tight_layout()
-    return solara.FigureMatplotlib(fig)
+    out = solara.FigureMatplotlib(fig)
+    plt.close(fig)
+    return out
    
    
    
@@ -56,7 +62,9 @@ def FirmProfitHistogram(model: LaborMarketModel):
     ax.set_ylabel("Frequency")
     fig.subplots_adjust(bottom=0.2)
     plt.tight_layout()
-    return solara.FigureMatplotlib(fig)
+    out = solara.FigureMatplotlib(fig)
+    plt.close(fig)
+    return out
    
    
    
@@ -74,7 +82,9 @@ def FirmCapitalHistogram(model: LaborMarketModel):
     ax.set_ylabel("Frequency")
     fig.subplots_adjust(bottom=0.2)
     plt.tight_layout()
-    return solara.FigureMatplotlib(fig)
+    out = solara.FigureMatplotlib(fig)
+    plt.close(fig)
+    return out
    
    
    
@@ -105,7 +115,9 @@ def WageVsMPLScatter(model: LaborMarketModel):
     ax.set_ylabel("Monthly Wage")
     fig.subplots_adjust(bottom=0.2)
     plt.tight_layout()
-    return solara.FigureMatplotlib(fig)
+    out = solara.FigureMatplotlib(fig)
+    plt.close(fig)
+    return out
    
    
    
@@ -125,7 +137,9 @@ def CapitalVsProfitScatter(model: LaborMarketModel):
     ax.set_ylabel("Profit")
     fig.subplots_adjust(bottom=0.2)
     plt.tight_layout()
-    return solara.FigureMatplotlib(fig)
+    out = solara.FigureMatplotlib(fig)
+    plt.close(fig)
+    return out
    
    
 @solara.component
@@ -146,7 +160,9 @@ def WorkerUtilityHistogram(model: LaborMarketModel):
     ax.set_ylabel("Frequency")
     fig.subplots_adjust(bottom=0.2)
     plt.tight_layout()
-    return solara.FigureMatplotlib(fig)
+    out = solara.FigureMatplotlib(fig)
+    plt.close(fig)
+    return out
 
 
 @solara.component
@@ -162,11 +178,38 @@ def WorkerWageHistogram(model: LaborMarketModel):
     ax.set_ylabel("Frequency")
     fig.subplots_adjust(bottom=0.2)
     plt.tight_layout()
-    return solara.FigureMatplotlib(fig)
+    out = solara.FigureMatplotlib(fig)
+    plt.close(fig)
+    return out
 
-
+@solara.component
+def FirmTable(model: LaborMarketModel):
+    update_counter.get()
+    df = pd.DataFrame([
+        {
+            "id": f.unique_id,
+            "wage": f.monthly_wage,
+            "profit": f.profit,
+            "capital": f.capital,
+            "labor": len(f.current_workers),
+        }
+        for f in model.firms
+    ])
+    return solara.DataFrame(df)
    
-
+@solara.component
+def WorkerTable(model: LaborMarketModel):
+    update_counter.get()
+    df = pd.DataFrame([
+        {
+            "id": w.unique_id,
+            "employed": w.employed,
+            "wage": w.monthly_wage if w.employed else 0,
+            "utility": w.utility_if_work(w.monthly_wage) if w.employed else w.utility_if_not_work(),
+        }
+        for w in model.workers
+    ])
+    return solara.DataFrame(df)
 
 
 # --- Agent portrayal ---
@@ -295,7 +338,7 @@ page = SolaraViz(
     simulator=simulator,
     model=model,
     model_params=model_params,
-    components=[lineplot_component, lineplot_component_wage, lineplot_component_firm_size, lineplot_component_firm_capital,
+    components=[FirmTable, WorkerTable, lineplot_component, lineplot_component_wage, lineplot_component_firm_size, lineplot_component_firm_capital,
                 lineplot_component_min_wage, lineplot_component_avg_profit, lineplot_component_total_output, lineplot_component_capital_stock,
                 FirmHistogram, FirmWageHistogram, FirmProfitHistogram, FirmCapitalHistogram,
                 WageVsMPLScatter, CapitalVsProfitScatter, WorkerUtilityHistogram, WorkerWageHistogram],
