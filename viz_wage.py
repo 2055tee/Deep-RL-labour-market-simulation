@@ -12,16 +12,162 @@ import matplotlib.pyplot as plt
 @solara.component
 def FirmHistogram(model: LaborMarketModel):
     update_counter.get()  # hook into the global update counter so the figure re-renders every step
-    print(f"Rendering FirmHistogram with {len(model.firms)} firms.")
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(8, 4))
     firm_sizes = [len(firm.current_workers) for firm in model.firms]
     ax.hist(firm_sizes, bins=20, color="#3498db", edgecolor="black")
     ax.set_title(f"Distribution of Firm Sizes")
     ax.set_xlabel("Number of Workers")
     ax.set_ylabel("Frequency")
+    fig.subplots_adjust(bottom=0.2)
     plt.tight_layout()
-    
-    return solara.FigureMatplotlib(fig)  # Re-render when the model updates
+    return solara.FigureMatplotlib(fig)
+   
+   
+   
+
+
+@solara.component
+def FirmWageHistogram(model: LaborMarketModel):
+    update_counter.get()
+    wages = [firm.monthly_wage for firm in model.firms if firm.monthly_wage is not None]
+    fig, ax = plt.subplots(figsize=(8, 4))
+    if wages:
+        ax.hist(wages, bins=20, color="#8e44ad", edgecolor="black")
+    ax.set_title("Distribution of Firm Wages")
+    ax.set_xlabel("Monthly Wage")
+    ax.set_ylabel("Frequency")
+    fig.subplots_adjust(bottom=0.2)
+    plt.tight_layout()
+    return solara.FigureMatplotlib(fig)
+   
+   
+   
+
+
+@solara.component
+def FirmProfitHistogram(model: LaborMarketModel):
+    update_counter.get()
+    profits = [firm.profit for firm in model.firms]
+    fig, ax = plt.subplots(figsize=(8, 4))
+    if profits:
+        ax.hist(profits, bins=20, color="#f39c12", edgecolor="black")
+    ax.set_title("Distribution of Firm Profits")
+    ax.set_xlabel("Profit")
+    ax.set_ylabel("Frequency")
+    fig.subplots_adjust(bottom=0.2)
+    plt.tight_layout()
+    return solara.FigureMatplotlib(fig)
+   
+   
+   
+
+
+@solara.component
+def FirmCapitalHistogram(model: LaborMarketModel):
+    update_counter.get()
+    capitals = [firm.capital for firm in model.firms]
+    fig, ax = plt.subplots(figsize=(8, 4))
+    if capitals:
+        ax.hist(capitals, bins=20, color="#27ae60", edgecolor="black")
+    ax.set_title("Distribution of Firm Capital")
+    ax.set_xlabel("Capital")
+    ax.set_ylabel("Frequency")
+    fig.subplots_adjust(bottom=0.2)
+    plt.tight_layout()
+    return solara.FigureMatplotlib(fig)
+   
+   
+   
+
+
+@solara.component
+def WageVsMPLScatter(model: LaborMarketModel):
+    update_counter.get()
+    wages = []
+    vmpls = []  # value of marginal product of labor (price * MPL)
+    for firm in model.firms:
+        if firm.monthly_wage is None:
+            continue
+        labor = len(firm.current_workers)
+        mpl = firm.marginal_product_labor(firm.productivity, labor, firm.alpha)
+        vmpl = mpl * firm.output_price
+        wages.append(firm.monthly_wage)
+        vmpls.append(vmpl)
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    if wages and vmpls:
+        ax.scatter(vmpls, wages, c="#2980b9", edgecolors="black", alpha=0.7)
+        diag_min = min(min(vmpls), min(wages))
+        diag_max = max(max(vmpls), max(wages))
+        ax.plot([diag_min, diag_max], [diag_min, diag_max], color="#7f8c8d", linestyle="--", linewidth=1)
+    ax.set_title("Wage vs Value of MPL")
+    ax.set_xlabel("Value of MPL (price × MPL)")
+    ax.set_ylabel("Monthly Wage")
+    fig.subplots_adjust(bottom=0.2)
+    plt.tight_layout()
+    return solara.FigureMatplotlib(fig)
+   
+   
+   
+
+
+@solara.component
+def CapitalVsProfitScatter(model: LaborMarketModel):
+    update_counter.get()
+    capitals = [firm.capital for firm in model.firms]
+    profits = [firm.profit for firm in model.firms]
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    if capitals and profits:
+        ax.scatter(capitals, profits, c="#c0392b", edgecolors="black", alpha=0.7)
+    ax.set_title("Capital vs Profit")
+    ax.set_xlabel("Capital")
+    ax.set_ylabel("Profit")
+    fig.subplots_adjust(bottom=0.2)
+    plt.tight_layout()
+    return solara.FigureMatplotlib(fig)
+   
+   
+@solara.component
+def WorkerUtilityHistogram(model: LaborMarketModel):
+    update_counter.get()
+    utilities = []
+    for worker in model.workers:
+        if worker.employed:
+            utilities.append(worker.utility_if_work(worker.monthly_wage))
+        else:
+            utilities.append(worker.utility_if_not_work())
+
+    fig, ax = plt.subplots(figsize=(9, 4))
+    if utilities:
+        ax.hist(utilities, bins=20, color="#9b59b6", edgecolor="black")
+    ax.set_title("Distribution of Worker Utility")
+    ax.set_xlabel("Utility")
+    ax.set_ylabel("Frequency")
+    fig.subplots_adjust(bottom=0.2)
+    plt.tight_layout()
+    return solara.FigureMatplotlib(fig)
+
+
+@solara.component
+def WorkerWageHistogram(model: LaborMarketModel):
+    update_counter.get()
+    wages = [w.monthly_wage for w in model.workers if w.employed and w.monthly_wage > 0]
+
+    fig, ax = plt.subplots(figsize=(9, 4))
+    if wages:
+        ax.hist(wages, bins=20, color="#1abc9c", edgecolor="black")
+    ax.set_title("Distribution of Worker Wages")
+    ax.set_xlabel("Monthly Wage")
+    ax.set_ylabel("Frequency")
+    fig.subplots_adjust(bottom=0.2)
+    plt.tight_layout()
+    return solara.FigureMatplotlib(fig)
+
+
+   
+
+
 
 # --- Agent portrayal ---
 def worker_portrayal(agent):
@@ -81,6 +227,10 @@ model_params = {
 # --- Visualization helpers ---
 def post_process_lines(ax):
     ax.legend(loc="center left", bbox_to_anchor=(1, 0.9))
+    # Give the auto-generated line plots more breathing room
+    fig = ax.figure
+    fig.set_size_inches(7, 5)
+    fig.subplots_adjust(bottom=0.2)
     
 # --- Visualization components ---
 lineplot_component = make_plot_component(
@@ -114,6 +264,21 @@ lineplot_component_min_wage = make_plot_component(
     post_process=post_process_lines,
 )
 
+lineplot_component_avg_profit = make_plot_component(
+    measure="AverageProfit",
+    post_process=post_process_lines,
+)
+
+lineplot_component_total_output = make_plot_component(
+    measure="TotalOutput",
+    post_process=post_process_lines,
+)
+
+lineplot_component_capital_stock = make_plot_component(
+    measure="CapitalStock",
+    post_process=post_process_lines,
+)
+
 # lineplot_component_machine_investment = make_plot_component(
 #     measure="AverageMachineInvestment",  # Specify the measure for the Average Machine Investment plot
 #     post_process=post_process_lines,
@@ -131,7 +296,9 @@ page = SolaraViz(
     model=model,
     model_params=model_params,
     components=[lineplot_component, lineplot_component_wage, lineplot_component_firm_size, lineplot_component_firm_capital,
-                lineplot_component_min_wage, FirmHistogram],
+                lineplot_component_min_wage, lineplot_component_avg_profit, lineplot_component_total_output, lineplot_component_capital_stock,
+                FirmHistogram, FirmWageHistogram, FirmProfitHistogram, FirmCapitalHistogram,
+                WageVsMPLScatter, CapitalVsProfitScatter, WorkerUtilityHistogram, WorkerWageHistogram],
 )
 
 page

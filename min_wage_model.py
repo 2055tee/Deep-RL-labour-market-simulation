@@ -156,6 +156,8 @@ class Firm(Agent):
         self.daily_wage = None # derived from monthly wage, this is the wage paid to workers per day (assuming 20 working days per month)
         self.productivity = self.base_productivity * self.productivity_multiplier
         self.alpha = 0.65  # labor share
+        self.profit = 0  # track latest profit for visualization
+        self.last_output = 0  # track latest physical output for aggregation
 
         self.vacancies = 0
         self.applicants = []
@@ -265,6 +267,7 @@ class Firm(Agent):
     def step(self):
         # Production phase
         output = self.produce()
+        self.last_output = output
         revenue = output * self.output_price
 
         # Wage cost
@@ -279,10 +282,10 @@ class Firm(Agent):
 
         # Profit calculation
         profit = revenue - total_wage_cost - capital_cost
-        self.model.total_profit += profit
+        self.profit = profit
 
-        # Adjust capital every 12 steps
-        if self.model.step_count % 12 == 0:
+        # Adjust capital every 12 steps but not in the first step to allow initial conditions to stabilize
+        if self.model.step_count % 12 == 0 and self.model.step_count > 0:
             total_labor = len(self.current_workers)
             self.adjust_capital(total_labor, self.rental_rate)
 
@@ -493,7 +496,7 @@ class Firm_Old(Agent):
 # MODEL
 # -------------------
 class LaborMarketModel(Model):
-    def __init__(self, N_workers=1000, N_firms=10, min_wage=7700, simulator=None, seed=42):
+    def __init__(self, N_workers=100, N_firms=10, min_wage=7700, simulator=None, seed=42):
         super().__init__(seed=seed)
         if simulator:
             self.simulator = simulator
@@ -511,7 +514,7 @@ class LaborMarketModel(Model):
         
         # Create agents
         for i in range(self.num_workers):
-            w = Worker(i, self, hours_worked=160, non_labor_income=random.uniform(0, 1000), 
+            w = Worker(i, self, hours_worked=160, non_labor_income=random.uniform(0, 5000), 
                        consumption_weight=random.uniform(0.3, 0.7))
             self.schedule.add(w)
         for i in range(self.num_firms):
@@ -578,10 +581,12 @@ class LaborMarketModel(Model):
             # Mesa reporters
             "EmploymentRate": self.compute_employment_rate,
             "AverageWage": self.compute_avg_wage,
-            # "AverageProfit": self.compute_avg_profit,
+            "AverageProfit": self.compute_avg_profit,
             "AvgFirmSize": self.get_firm_size,
             "AvgFirmCapital": self.get_avg_firm_capital,
             "MinWage": self.get_min_wage,
+            "TotalOutput": self.get_total_output,
+            "CapitalStock": self.get_capital_stock,
             # "AverageMachineInvestment": self.get_avg_machine_investment,
             # NEW: Collect lists of all values for later analysis/distribution plotting
             "AllFirmSizes": self.get_firm_sizes_list, 
@@ -617,9 +622,9 @@ class LaborMarketModel(Model):
         wages = [w.monthly_wage for w in self.schedule.agents if isinstance(w, Worker) and w.employed and w.monthly_wage > 0]
         return np.mean(wages) if wages else 0
 
-    # def compute_avg_profit(self):
-    #     profits = [f.current_profit for f in self.schedule.agents if isinstance(f, Firm)]
-    #     return np.mean(profits) if profits else 0
+    def compute_avg_profit(self):
+        profits = [f.profit for f in self.schedule.agents if isinstance(f, Firm)]
+        return np.mean(profits) if profits else 0
 
     def get_firm_size(self):
         # average number of workers per firm
@@ -638,6 +643,14 @@ class LaborMarketModel(Model):
     
     def get_firm_capitals_list(self):
         return [f.capital for f in self.schedule.agents if isinstance(f, Firm)]
+
+    def get_total_output(self):
+        outputs = [f.last_output for f in self.schedule.agents if isinstance(f, Firm)]
+        return float(np.sum(outputs)) if outputs else 0.0
+
+    def get_capital_stock(self):
+        capitals = [f.capital for f in self.schedule.agents if isinstance(f, Firm)]
+        return float(np.sum(capitals)) if capitals else 0.0
     
     # def get_employed_wages_list(self):
     #     return [w.monthly_wage for w in self.schedule.agents if isinstance(w, Worker) and w.employed]
