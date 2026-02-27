@@ -1,3 +1,4 @@
 mesa[rec]
 uvicorn<0.23
 matplotlib
+stable-baselines[mpi]
