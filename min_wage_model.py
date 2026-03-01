@@ -159,6 +159,12 @@ class Firm(Agent):
         self.profit = 0  # track latest profit for visualization
         self.last_output = 0  # track latest physical output for aggregation
 
+        # Wage and turnover tracking
+        self.prev_profit = 0
+        self.quits_last_month = 0
+        self.last_worker_count = 0
+        self.vacancy_duration = 0
+
         self.vacancies = 0
         self.applicants = []
         self.current_workers = []
@@ -204,6 +210,26 @@ class Firm(Agent):
     
     def value_of_marginal_product(self, price, mp):
         return price * mp
+
+    def compute_profit(self, wage=None):
+        """Estimate profit for the given wage without changing state."""
+        wage_to_use = self.monthly_wage if wage is None else wage
+        labor = len(self.current_workers)
+        labor = max(labor, 1e-6)
+        output = self.productivity * (self.capital ** (1 - self.alpha)) * (labor ** self.alpha)
+        revenue = output * self.output_price
+        total_wage_cost = wage_to_use * labor
+        capital_cost = self.capital * self.rental_rate
+        return revenue - total_wage_cost - capital_cost
+
+    def compute_vacancy_rate(self):
+        positions = len(self.current_workers) + self.vacancies
+        return self.vacancies / positions if positions > 0 else 0
+
+    def compute_quit_rate(self):
+        baseline_workers = self.last_worker_count + self.quits_last_month
+        baseline_workers = max(baseline_workers, 1)
+        return self.quits_last_month / baseline_workers
     
     def adjust_capital(self, labor, rental_rate):
         # Run every 12 steps to adjust capital based on the value of the marginal product of capital
@@ -245,12 +271,27 @@ class Firm(Agent):
 
         for i in range(hires):
             worker = self.applicants[i]
+            previous_employer = worker.employer
+            if previous_employer and previous_employer is not self:
+                previous_employer.handle_quit(worker)
             worker.employed = True
             worker.employer = self
             self.pending_workers.append(worker)  # Add to pending to start next step
             self.vacancies -= 1
 
         self.applicants = []
+
+        # Track persistence of unfilled roles
+        if self.vacancies > 0:
+            self.vacancy_duration += 1
+        else:
+            self.vacancy_duration = 0
+
+    def handle_quit(self, worker):
+        if worker in self.current_workers:
+            self.current_workers.remove(worker)
+        worker.employer = None
+        self.quits_last_month += 1
 
     def onboard_workers_step(self):
         """Move workers from pending to current (1-step hiring delay)"""
@@ -268,6 +309,7 @@ class Firm(Agent):
         self.hire()
 
     def step(self):
+        self.last_worker_count = len(self.current_workers)
         # Production phase
         output = self.produce()
         self.last_output = output
@@ -291,6 +333,47 @@ class Firm(Agent):
         if self.model.step_count % 12 == 0 and self.model.step_count > 0:
             total_labor = len(self.current_workers)
             self.adjust_capital(total_labor, self.rental_rate)
+
+        self.adjust_wage()
+        self.prev_profit = self.profit
+        self.quits_last_month = 0
+
+    def adjust_wage(self, base_delta=0.02, target_quit=0.02, quit_gamma=0.05):
+        vacancy_rate = self.compute_vacancy_rate()
+        quit_rate = self.compute_quit_rate()
+
+        # Scale the step size by current hiring pressure
+        delta_scale = 1 + vacancy_rate + quit_rate
+        delta = base_delta * delta_scale
+
+        current_wage = self.monthly_wage
+        current_profit = self.profit
+
+        profit_up = self.compute_profit(current_wage * (1 + delta))
+        profit_down = self.compute_profit(max(current_wage * (1 - delta), self.model.min_wage))
+
+        # Profit-based direction: move wages the way profit improves most
+        if profit_up > current_profit and profit_up >= profit_down:
+            new_wage = current_wage * (1 + delta)
+        elif profit_down > current_profit:
+            new_wage = max(current_wage * (1 - delta), self.model.min_wage)
+        else:
+            new_wage = current_wage
+
+        # Vacancy pressure: persistent vacancies nudge wages upward
+        if self.vacancy_duration >= 3:
+            new_wage *= (1 + delta * 0.5)
+
+        # Quit-rate targeting: push wage toward desired turnover
+        quit_adjustment = quit_gamma * (quit_rate - target_quit)
+        new_wage *= (1 + quit_adjustment)
+
+        # Apply bounds and propagate to workers
+        self.monthly_wage = int(max(new_wage, self.model.min_wage))
+        self.daily_wage = self.monthly_wage / 20
+        for w in self.current_workers:
+            w.monthly_wage = self.monthly_wage
+            w.daily_wage = self.daily_wage
 
     def job_search_step(self):
         pass
@@ -585,6 +668,8 @@ class LaborMarketModel(Model):
             "EmploymentRate": self.compute_employment_rate,
             "AverageWage": self.compute_avg_wage,
             "AverageProfit": self.compute_avg_profit,
+            "AverageFirmWage": self.get_avg_firm_wage,
+            "AverageWorkerUtility": self.compute_avg_worker_utility,
             "AvgFirmSize": self.get_firm_size,
             "AvgFirmCapital": self.get_avg_firm_capital,
             "MinWage": self.get_min_wage,
@@ -629,6 +714,16 @@ class LaborMarketModel(Model):
         profits = [f.profit for f in self.schedule.agents if isinstance(f, Firm)]
         return np.mean(profits) if profits else 0
 
+    def compute_avg_worker_utility(self):
+        utilities = []
+        for w in self.schedule.agents:
+            if isinstance(w, Worker):
+                if w.employed:
+                    utilities.append(w.utility_if_work(w.monthly_wage))
+                else:
+                    utilities.append(w.utility_if_not_work())
+        return np.mean(utilities) if utilities else 0
+
     def get_firm_size(self):
         # average number of workers per firm
         firm_sizes = [len(f.current_workers) for f in self.schedule.agents if isinstance(f, Firm)]
@@ -637,6 +732,10 @@ class LaborMarketModel(Model):
     def get_avg_firm_capital(self):
         firm_capitals = [f.capital for f in self.schedule.agents if isinstance(f, Firm)]
         return np.mean(firm_capitals) if firm_capitals else 0
+
+    def get_avg_firm_wage(self):
+        wages = [f.monthly_wage for f in self.schedule.agents if isinstance(f, Firm) and f.monthly_wage is not None]
+        return np.mean(wages) if wages else 0
     
     def get_min_wage(self):
         return self.min_wage  # monthly minimum wage

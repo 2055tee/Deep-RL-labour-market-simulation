@@ -37,6 +37,10 @@ def FirmWageHistogram(model: LaborMarketModel):
     fig, ax = plt.subplots(figsize=(8, 4))
     if wages:
         ax.hist(wages, bins=20, color="#8e44ad", edgecolor="black")
+    # If all wages are the same, make sure the x-axis shows that single wage value
+    if wages and len(set(wages)) == 1:
+        ax.set_xlim(wages[0] - 1, wages[0] + 1)  # Show a small range around the single wage value
+        ax.set_xticks(wages)  # Set x-ticks to the single wage value
     ax.set_title("Distribution of Firm Wages")
     ax.set_xlabel("Monthly Wage")
     ax.set_ylabel("Frequency")
@@ -173,6 +177,10 @@ def WorkerWageHistogram(model: LaborMarketModel):
     fig, ax = plt.subplots(figsize=(9, 4))
     if wages:
         ax.hist(wages, bins=20, color="#1abc9c", edgecolor="black")
+    # If all wages are the same, make sure the x-axis shows that single wage value
+    if wages and len(set(wages)) == 1:
+        ax.set_xlim(wages[0] - 1, wages[0] + 1)  # Show a small range around the single wage value
+        ax.set_xticks(wages)  # Set x-ticks to the single wage value
     ax.set_title("Distribution of Worker Wages")
     ax.set_xlabel("Monthly Wage")
     ax.set_ylabel("Frequency")
@@ -287,6 +295,11 @@ lineplot_component_wage = make_plot_component(
     post_process=post_process_lines,
 )
 
+lineplot_component_worker_utility = make_plot_component(
+    measure="AverageWorkerUtility",
+    post_process=post_process_lines,
+)
+
 # lineplot_component_profit = make_plot_component(
 #     measure="AverageProfit",  # Specify the measure for the AverageProfit plot
 #     post_process=post_process_lines,
@@ -304,6 +317,11 @@ lineplot_component_firm_capital = make_plot_component(
 
 lineplot_component_min_wage = make_plot_component(
     measure="MinWage",  # Specify the measure for the Minimum Wage plot
+    post_process=post_process_lines,
+)
+
+lineplot_component_avg_firm_wage = make_plot_component(
+    measure="AverageFirmWage",
     post_process=post_process_lines,
 )
 
@@ -338,8 +356,8 @@ page = SolaraViz(
     simulator=simulator,
     model=model,
     model_params=model_params,
-    components=[FirmTable, WorkerTable, lineplot_component, lineplot_component_wage, lineplot_component_firm_size, lineplot_component_firm_capital,
-                lineplot_component_min_wage, lineplot_component_avg_profit, lineplot_component_total_output, lineplot_component_capital_stock,
+    components=[FirmTable, WorkerTable, lineplot_component, lineplot_component_wage, lineplot_component_worker_utility, lineplot_component_firm_size, lineplot_component_firm_capital,
+                lineplot_component_min_wage, lineplot_component_avg_firm_wage, lineplot_component_avg_profit, lineplot_component_total_output, lineplot_component_capital_stock,
                 FirmHistogram, FirmWageHistogram, FirmProfitHistogram, FirmCapitalHistogram,
                 WageVsMPLScatter, CapitalVsProfitScatter, WorkerUtilityHistogram, WorkerWageHistogram],
 )
