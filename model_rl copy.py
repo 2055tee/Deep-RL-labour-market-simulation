@@ -25,7 +25,6 @@ class Worker(Agent):
         self.alpha = consumption_rate
         self.job_search_prob = 0.1
         self.monthly_wage = 0
-        self.steps = 0
 
         # ----- RL memory -----
         self.rl_action = 0
@@ -57,8 +56,9 @@ class Worker(Agent):
     # ---------------- RL ACTION ----------------
 
     def rl_decision(self):
-        
+
         firms = self.model.firms
+
         # 0 = stay
         if self.rl_action == 0:
             return
@@ -73,16 +73,14 @@ class Worker(Agent):
 
         # 2 = quit
         if self.rl_action == 2 and self.employed:
-            # check if employee is in list of current workers for safety
-            if self in self.employer.current_workers:
-                self.employer.current_workers.remove(self)
-                self.employed = False
-                self.employer = None
-                self.monthly_wage = 0
+            self.employer.current_workers.remove(self)
+            self.employed = False
+            self.employer = None
+            self.monthly_wage = 0
 
     def search_for_jobs(self, firms):
         if self.employed:
-            if random.random() > self.job_search_prob:
+            if random.random() > self.ON_THE_JOB_SEARCH_PROB:
                 return
             else:
                 # Consider switching jobs
@@ -91,7 +89,7 @@ class Worker(Agent):
                 for firm in firms:
                     if firm.vacancies > 0:
                         # Consider the utility of working at this firm and compare to current job and switching cost
-                        if self.utility_if_work(firm.monthly_wage) - (self.monthly_wage * 0.05) > self.utility_if_work(self.monthly_wage):
+                        if self.utility_if_work(firm.monthly_wage) - self.calculate_switching_cost() > self.utility_if_work(self.monthly_wage):
                             acceptable_firms.append(firm)
 
                 if acceptable_firms:
@@ -106,13 +104,14 @@ class Worker(Agent):
 
                 # TODO: Consider whether to make this worker search again every step after this for realism?
 
+
         acceptable_firms = []
 
         utility_if_not_work = self.utility_if_not_work()
         for firm in firms:
             if firm.vacancies > 0:
                 # Consider the utility of working at this firm and compare to not working and switching cost
-                if self.utility_if_work(firm.monthly_wage) - (self.monthly_wage * 0.05) > utility_if_not_work:
+                if self.utility_if_work(firm.monthly_wage) - self.calculate_switching_cost() > utility_if_not_work:
                     acceptable_firms.append(firm)
 
         if acceptable_firms:
@@ -128,23 +127,16 @@ class Worker(Agent):
 
     def step(self):
         # Calculate reward based on utility change
-        if self.steps % self.model.DECISION_INTERVAL == 0:
+        if self.model.schedule.steps % 3 == 0:
             current_utility = self.utility_if_work(self.monthly_wage) if self.employed else self.utility_if_not_work()
             self.reward = current_utility - self.last_utility
             self.last_utility = current_utility
         else:
-            self.reward = 0
-        
-        self.steps += 1
-
+            pass
         
 
     def rl_stage(self):
-        if self.steps % self.model.DECISION_INTERVAL != 0:
-            return
-
-        self.rl_action = self.model.worker_actions[self.uid]
-        self.rl_decision()
+        pass
     
     def hire_step(self):
         pass
@@ -177,7 +169,6 @@ class Firm(Agent):
         self.gamma = 0.8
         self.steps = 0
         self.pending_workers = []
-        self.last_profit = 0
         
         self.monthly_wage = 0
 
@@ -230,49 +221,12 @@ class Firm(Agent):
             
     
     def rl_decision(self):
+
         if self.rl_action == 1:
             self.monthly_wage += 100
-            for w in self.current_workers:
-                w.monthly_wage = self.monthly_wage
         elif self.rl_action == 2:
             self.monthly_wage -= 100
             self.monthly_wage = max(self.monthly_wage, 7700)
-            for w in self.current_workers:
-                w.monthly_wage = self.monthly_wage
-        elif self.rl_action == 3:
-            self.vacancies += 1
-        elif self.rl_action == 4:
-            self.vacancies += 2
-        elif self.rl_action == 5:
-            self.vacancies += 3
-        elif self.rl_action == 6:
-            self.vacancies += 5
-        elif self.rl_action == 7:
-            # Fire a random worker if there are any
-            if self.current_workers:
-                fired_worker = random.choice(self.current_workers)
-                self.current_workers.remove(fired_worker)
-                fired_worker.employed = False
-                fired_worker.employer = None
-                fired_worker.monthly_wage = 0
-        elif self.rl_action == 8:
-            # Fire 2 random workers if there are any
-            for _ in range(2):
-                if self.current_workers:
-                    fired_worker = random.choice(self.current_workers)
-                    self.current_workers.remove(fired_worker)
-                    fired_worker.employed = False
-                    fired_worker.employer = None
-                    fired_worker.monthly_wage = 0
-        elif self.rl_action == 9:
-            # Fire 3 random workers if there are any
-            for _ in range(3):
-                if self.current_workers:
-                    fired_worker = random.choice(self.current_workers)
-                    self.current_workers.remove(fired_worker)
-                    fired_worker.employed = False
-                    fired_worker.employer = None
-                    fired_worker.monthly_wage = 0
 
     # ---------- Hiring ----------
 
@@ -298,25 +252,25 @@ class Firm(Agent):
         for w in self.current_workers:
             w.monthly_wage = self.monthly_wage
         
-    # def post_vacancies_step(self):
-    #     self.applicants = []
-    #     self.vacancies = 0
+    def post_vacancies_step(self):
+        self.applicants = []
+        self.vacancies = 0
 
-    #     current_assumed_labor = len(self.current_workers)
-    #     while True:
-    #         mpl = self.marginal_product_labor(
-    #             self.productivity,
-    #             current_assumed_labor + 1,  # Consider hiring one more worker
-    #             self.alpha
-    #         )
-    #         vmp = self.output_price * mpl
+        current_assumed_labor = len(self.current_workers)
+        while True:
+            mpl = self.marginal_product_labor(
+                self.productivity,
+                current_assumed_labor + 1,  # Consider hiring one more worker
+                self.alpha
+            )
+            vmp = self.output_price * mpl
 
-    #         if vmp >= self.monthly_wage:
-    #             self.vacancies += 1
-    #             # Here we just increment the count; actual hiring is handled elsewhere
-    #             current_assumed_labor += 1
-    #         else:
-    #             break
+            if vmp >= self.monthly_wage:
+                self.vacancies += 1
+                # Here we just increment the count; actual hiring is handled elsewhere
+                current_assumed_labor += 1
+            else:
+                break
             
 
     # ---------- Production ----------
@@ -331,24 +285,12 @@ class Firm(Agent):
         if self.steps % 12 == 0:
             self.adjust_capital(len(self.current_workers), self.rental_rate)
         
+        self.reward = self.profit
         
-        if self.steps % self.model.DECISION_INTERVAL == 0:
-            profit_change = self.profit - self.last_profit
-            self.reward = profit_change
-            self.last_profit = self.profit
-        else:
-            self.reward = 0
-        
-                
         self.steps += 1
     
     def rl_stage(self):
-        if self.model.schedule.steps % self.model.DECISION_INTERVAL != 0:
-            return
-
-        idx = self.model.firms.index(self)
-        self.rl_action = self.model.firm_actions[idx]
-        self.rl_decision()
+        pass
     
     def job_search_step(self):
         pass
@@ -371,6 +313,7 @@ class LaborMarketModel(Model):
             self,
             stage_list=["rl_stage",
                         "onboard_workers_step",
+                        "post_vacancies_step",
                         "job_search_step",
                         "hire_step",
                         "step"],
@@ -415,13 +358,12 @@ class LaborMarketModel(Model):
 
     # ---------- RL stage ----------
     def rl_stage(self):
+
         if self.schedule.steps % self.DECISION_INTERVAL != 0:
             return
     
-        # workers
         for w in self.workers:
             w.rl_action = self.worker_actions[w.unique_id]
-            w.rl_decision()
 
         for i, f in enumerate(self.firms):
             f.rl_action = self.firm_actions[i]

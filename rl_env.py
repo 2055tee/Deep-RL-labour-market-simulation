@@ -29,21 +29,27 @@ class LaborMarketEnv(gym.Env):
 
     def observe(self):
 
-        avg_wage = np.mean(
-            [w.monthly_wage for w in self.model.workers if w.employed]
-            or [0]
-        )
+        employed_workers = [w for w in self.model.workers if w.employed]
 
-        employment = sum(w.employed for w in self.model.workers) / self.n_workers
+        avg_wage = np.mean([w.monthly_wage for w in employed_workers] or [0])
+        employment = len(employed_workers) / self.n_workers
+        unemployment = 1 - employment
 
         avg_profit = np.mean([f.profit for f in self.model.firms])
+        avg_capital = np.mean([f.capital for f in self.model.firms])
+
+        total_vacancies = sum(f.vacancies for f in self.model.firms)
+
+        vacancy_rate = total_vacancies / self.n_workers
 
         return np.array([
             avg_wage/50000,
             employment,
+            unemployment,
             avg_profit/100000,
-            len(self.model.firms)/10,
-            0,0,0,0,0,0
+            avg_capital/100,
+            vacancy_rate,
+            0,0,0,0
         ], dtype=np.float32)
 
     # ---------------- Step ----------------
@@ -55,8 +61,8 @@ class LaborMarketEnv(gym.Env):
 
         self.model.step()
 
-        reward_workers = np.mean([w.reward for w in self.model.workers])
-        reward_firms = np.mean([f.profit for f in self.model.firms]) / 10000
+        reward_workers = np.mean([w.reward for w in self.model.workers])/1000
+        reward_firms = np.mean([f.reward for f in self.model.firms])/1000
 
         reward = reward_workers + reward_firms
 
