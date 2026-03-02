@@ -729,11 +729,13 @@ class LaborMarketModel(Model):
             "AverageProfit": self.compute_avg_profit,
             "AverageFirmWage": self.get_avg_firm_wage,
             "AverageWorkerUtility": self.compute_avg_worker_utility,
+            "CompetitiveWage": self.compute_competitive_wage,
             "AvgFirmSize": self.get_firm_size,
             "AvgFirmCapital": self.get_avg_firm_capital,
             "MinWage": self.get_min_wage,
             "TotalOutput": self.get_total_output,
             "CapitalStock": self.get_capital_stock,
+            "CapitalPerWorker": self.get_capital_per_worker,
             # "AverageMachineInvestment": self.get_avg_machine_investment,
             # NEW: Collect lists of all values for later analysis/distribution plotting
             "AllFirmSizes": self.get_firm_sizes_list, 
@@ -783,6 +785,21 @@ class LaborMarketModel(Model):
                     utilities.append(w.utility_if_not_work())
         return np.mean(utilities) if utilities else 0
 
+    def compute_competitive_wage(self):
+        # Employment-weighted value of marginal product of labor (VMP)
+        weighted_sum = 0
+        labor_sum = 0
+        for f in self.schedule.agents:
+            if isinstance(f, Firm):
+                labor = len(f.current_workers)
+                if labor == 0:
+                    continue
+                mpl = f.marginal_product_labor(f.productivity, labor, f.alpha)
+                vmp = mpl * f.output_price
+                weighted_sum += vmp * labor
+                labor_sum += labor
+        return (weighted_sum / labor_sum) if labor_sum > 0 else 0
+
     def get_firm_size(self):
         # average number of workers per firm
         firm_sizes = [len(f.current_workers) for f in self.schedule.agents if isinstance(f, Firm)]
@@ -812,6 +829,12 @@ class LaborMarketModel(Model):
     def get_capital_stock(self):
         capitals = [f.capital for f in self.schedule.agents if isinstance(f, Firm)]
         return float(np.sum(capitals)) if capitals else 0.0
+
+    def get_capital_per_worker(self):
+        capitals = [f.capital for f in self.schedule.agents if isinstance(f, Firm)]
+        total_capital = float(np.sum(capitals)) if capitals else 0.0
+        employed_workers = len([w for w in self.schedule.agents if isinstance(w, Worker) and w.employed])
+        return total_capital / employed_workers if employed_workers > 0 else 0.0
     
     # def get_employed_wages_list(self):
     #     return [w.monthly_wage for w in self.schedule.agents if isinstance(w, Worker) and w.employed]

@@ -284,7 +284,7 @@ def post_process_lines(ax):
     fig.subplots_adjust(bottom=0.2)
     
 # --- Visualization components ---
-lineplot_component = make_plot_component(
+lineplot_component_employment_rate = make_plot_component(
     measure="EmploymentRate",  # Directly specify the measure to plot
     post_process=post_process_lines,
 )
@@ -297,6 +297,11 @@ lineplot_component_wage = make_plot_component(
 
 lineplot_component_worker_utility = make_plot_component(
     measure="AverageWorkerUtility",
+    post_process=post_process_lines,
+)
+
+lineplot_component_comp_wage = make_plot_component(
+    measure="CompetitiveWage",
     post_process=post_process_lines,
 )
 
@@ -340,6 +345,11 @@ lineplot_component_capital_stock = make_plot_component(
     post_process=post_process_lines,
 )
 
+lineplot_component_capital_per_worker = make_plot_component(
+    measure="CapitalPerWorker",
+    post_process=post_process_lines,
+)
+
 # lineplot_component_machine_investment = make_plot_component(
 #     measure="AverageMachineInvestment",  # Specify the measure for the Average Machine Investment plot
 #     post_process=post_process_lines,
@@ -356,8 +366,8 @@ page = SolaraViz(
     simulator=simulator,
     model=model,
     model_params=model_params,
-    components=[FirmTable, WorkerTable, lineplot_component, lineplot_component_wage, lineplot_component_worker_utility, lineplot_component_firm_size, lineplot_component_firm_capital,
-                lineplot_component_min_wage, lineplot_component_avg_firm_wage, lineplot_component_avg_profit, lineplot_component_total_output, lineplot_component_capital_stock,
+    components=[FirmTable, WorkerTable, lineplot_component_employment_rate, lineplot_component_wage, lineplot_component_worker_utility, lineplot_component_comp_wage, lineplot_component_firm_size, lineplot_component_firm_capital,
+                lineplot_component_min_wage, lineplot_component_avg_firm_wage, lineplot_component_avg_profit, lineplot_component_total_output, lineplot_component_capital_stock, lineplot_component_capital_per_worker,
                 FirmHistogram, FirmWageHistogram, FirmProfitHistogram, FirmCapitalHistogram,
                 WageVsMPLScatter, CapitalVsProfitScatter, WorkerUtilityHistogram, WorkerWageHistogram],
 )
