@@ -277,7 +277,7 @@ model_params = {
 
 # --- Visualization helpers ---
 def post_process_lines(ax):
-    ax.legend(loc="center left", bbox_to_anchor=(1, 0.9))
+    # ax.legend(loc="center left", bbox_to_anchor=(1, 0.9))
     # Give the auto-generated line plots more breathing room
     fig = ax.figure
     fig.set_size_inches(7, 5)
