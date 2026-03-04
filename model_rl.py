@@ -57,7 +57,6 @@ class Worker(Agent):
     # ---------------- RL ACTION ----------------
 
     def rl_decision(self):
-        
         firms = self.model.firms
         # 0 = stay
         if self.rl_action == 0:
@@ -230,6 +229,7 @@ class Firm(Agent):
             
     
     def rl_decision(self):
+        # print(f"rl choose {self.rl_action}")
         if self.rl_action == 1:
             self.monthly_wage += 100
             for w in self.current_workers:
@@ -273,6 +273,8 @@ class Firm(Agent):
                     fired_worker.employed = False
                     fired_worker.employer = None
                     fired_worker.monthly_wage = 0
+        # print(f"vac {self.vacancies}")
+        # print(f"worker list {len(self.current_workers)}")
 
     # ---------- Hiring ----------
 
@@ -283,9 +285,22 @@ class Firm(Agent):
 
         for i in range(hires):
             worker = self.applicants[i]
+
+            # Skip if already hired or already pending here
+            if worker in self.current_workers or worker in self.pending_workers:
+                continue
+
+            # Remove from old employer safely
+            if worker.employer and worker in worker.employer.current_workers:
+                worker.employer.current_workers.remove(worker)
+
+            # Assign new employer
             worker.employed = True
             worker.employer = self
-            self.pending_workers.append(worker)  # Add to pending to start next step
+
+            # Add only once
+            self.pending_workers.append(worker)
+
             self.vacancies -= 1
 
         self.applicants = []
@@ -297,31 +312,11 @@ class Firm(Agent):
         # All workers should have the same wages based on the firm's current wage setting
         for w in self.current_workers:
             w.monthly_wage = self.monthly_wage
-        
-    # def post_vacancies_step(self):
-    #     self.applicants = []
-    #     self.vacancies = 0
-
-    #     current_assumed_labor = len(self.current_workers)
-    #     while True:
-    #         mpl = self.marginal_product_labor(
-    #             self.productivity,
-    #             current_assumed_labor + 1,  # Consider hiring one more worker
-    #             self.alpha
-    #         )
-    #         vmp = self.output_price * mpl
-
-    #         if vmp >= self.monthly_wage:
-    #             self.vacancies += 1
-    #             # Here we just increment the count; actual hiring is handled elsewhere
-    #             current_assumed_labor += 1
-    #         else:
-    #             break
-            
 
     # ---------- Production ----------
 
     def step(self):
+        # print(f"firm id {self.uid} number worker {len(self.current_workers)} profit : {self.profit}")
         output = self.produce()
         revenue = output * self.output_price
         wage_cost = sum(w.monthly_wage for w in self.current_workers)
@@ -332,12 +327,10 @@ class Firm(Agent):
             self.adjust_capital(len(self.current_workers), self.rental_rate)
         
         
-        if self.steps % self.model.DECISION_INTERVAL == 0:
-            profit_change = self.profit - self.last_profit
-            self.reward = profit_change
-            self.last_profit = self.profit
-        else:
-            self.reward = 0
+        profit_change = self.profit - self.last_profit
+        self.reward = profit_change
+        self.last_profit = self.profit
+
         
                 
         self.steps += 1
@@ -360,7 +353,7 @@ class Firm(Agent):
 
 class LaborMarketModel(Model):
 
-    def __init__(self, N_workers=50, N_firms=5):
+    def __init__(self, N_workers=100, N_firms=10):
 
         super().__init__()
 
@@ -412,20 +405,6 @@ class LaborMarketModel(Model):
                             firm.current_workers.append(worker)
                             break
             firm.set_initial_wage()
-
-    # ---------- RL stage ----------
-    def rl_stage(self):
-        if self.schedule.steps % self.DECISION_INTERVAL != 0:
-            return
-    
-        # workers
-        for w in self.workers:
-            w.rl_action = self.worker_actions[w.unique_id]
-            w.rl_decision()
-
-        for i, f in enumerate(self.firms):
-            f.rl_action = self.firm_actions[i]
-            f.rl_decision()
 
     def step(self):
         self.schedule.step()
