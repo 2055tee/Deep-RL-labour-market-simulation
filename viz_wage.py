@@ -190,6 +190,26 @@ def WorkerWageHistogram(model: LaborMarketModel):
     plt.close(fig)
     return out
 
+
+@solara.component
+def BeveridgeCurve(model: LaborMarketModel):
+    update_counter.get()
+    df = model.datacollector.get_model_vars_dataframe()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    if not df.empty and "UnemploymentRate" in df and "VacancyRate" in df:
+        ax.scatter(df["UnemploymentRate"], df["VacancyRate"], c="#34495e", edgecolors="black", alpha=0.7)
+        ax.set_xlabel("Unemployment Rate")
+        ax.set_ylabel("Vacancy Rate")
+        ax.set_title("Beveridge Curve")
+    else:
+        ax.text(0.5, 0.5, "No data yet", ha="center", va="center")
+        ax.set_axis_off()
+    fig.subplots_adjust(bottom=0.2)
+    plt.tight_layout()
+    out = solara.FigureMatplotlib(fig)
+    plt.close(fig)
+    return out
+
 @solara.component
 def FirmTable(model: LaborMarketModel):
     update_counter.get()
@@ -335,6 +355,11 @@ lineplot_component_avg_profit = make_plot_component(
     post_process=post_process_lines,
 )
 
+lineplot_component_vacancy_rate = make_plot_component(
+    measure="VacancyRate",
+    post_process=post_process_lines,
+)
+
 lineplot_component_total_output = make_plot_component(
     measure="TotalOutput",
     post_process=post_process_lines,
@@ -367,9 +392,9 @@ page = SolaraViz(
     model=model,
     model_params=model_params,
     components=[FirmTable, WorkerTable, lineplot_component_employment_rate, lineplot_component_wage, lineplot_component_worker_utility, lineplot_component_comp_wage, lineplot_component_firm_size, lineplot_component_firm_capital,
-                lineplot_component_min_wage, lineplot_component_avg_firm_wage, lineplot_component_avg_profit, lineplot_component_total_output, lineplot_component_capital_stock, lineplot_component_capital_per_worker,
+                lineplot_component_min_wage, lineplot_component_avg_firm_wage, lineplot_component_avg_profit, lineplot_component_total_output, lineplot_component_capital_stock, lineplot_component_capital_per_worker, lineplot_component_vacancy_rate,
                 FirmHistogram, FirmWageHistogram, FirmProfitHistogram, FirmCapitalHistogram,
-                WageVsMPLScatter, CapitalVsProfitScatter, WorkerUtilityHistogram, WorkerWageHistogram],
+                WageVsMPLScatter, CapitalVsProfitScatter, WorkerUtilityHistogram, WorkerWageHistogram, BeveridgeCurve],
 )
 
 page
