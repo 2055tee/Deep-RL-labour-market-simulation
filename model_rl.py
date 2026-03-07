@@ -229,7 +229,7 @@ class Firm(Agent):
             
     
     def rl_decision(self):
-        # print(f"rl choose {self.rl_action}")
+        # print(f"firm {self.uid} rl choose {self.rl_action} with wage {self.monthly_wage} with no.worker {len(self.current_workers) } vac {self.vacancies}")
         if self.rl_action == 1:
             self.monthly_wage += 100
             for w in self.current_workers:
@@ -273,7 +273,6 @@ class Firm(Agent):
                     fired_worker.employed = False
                     fired_worker.employer = None
                     fired_worker.monthly_wage = 0
-        # print(f"vac {self.vacancies}")
         # print(f"worker list {len(self.current_workers)}")
 
     # ---------- Hiring ----------

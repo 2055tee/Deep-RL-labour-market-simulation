@@ -33,23 +33,22 @@ class LaborMarketEnv(gym.Env):
 
         avg_wage = np.mean([w.monthly_wage for w in employed_workers] or [0])
         employment = len(employed_workers) / self.n_workers
-        unemployment = 1 - employment
+        avg_firm_wage = np.mean([f.monthly_wage for f in self.model.firms])
 
         avg_profit = np.mean([f.profit for f in self.model.firms])
         avg_capital = np.mean([f.capital for f in self.model.firms])
-
-        total_vacancies = sum(f.vacancies for f in self.model.firms)
-
-        vacancy_rate = total_vacancies / self.n_workers
+        avg_utility = np.mean([w.last_utility for w in self.model.workers])
+        avg_firm_capital = np.mean([f.capital for f in self.model.firms])
 
         return np.array([
-            avg_wage/50000,
+            avg_wage/8000,
             employment,
-            unemployment,
-            avg_profit/100000,
-            avg_capital/100,
-            vacancy_rate,
-            0,0,0,0
+            avg_utility/3000,
+            avg_profit/3000,
+            avg_capital/200,
+            avg_firm_wage/8000,
+            avg_firm_capital/100,
+            0,0,0
         ], dtype=np.float32)
 
     # ---------------- Step ----------------
@@ -61,8 +60,8 @@ class LaborMarketEnv(gym.Env):
 
         self.model.step()
 
-        reward_workers = np.mean([w.reward for w in self.model.workers])/1000
-        reward_firms = np.mean([f.reward for f in self.model.firms])/1000
+        reward_workers = np.mean([w.reward for w in self.model.workers])/10000
+        reward_firms = np.mean([f.reward for f in self.model.firms])/10000
 
         reward = reward_workers + reward_firms
 
