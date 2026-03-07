@@ -138,22 +138,13 @@ class Worker(Agent):
 
         self.search_for_jobs(firms_to_consider)
 
-    def post_vacancies_step(self):
+    def adjust_employment_step(self):
         pass
 
     def hire_step(self):
         pass
 
-    def decide_action_step(self):
-        pass
-
-    def apply_action_step(self):
-        pass
-
     def onboard_workers_step(self):
-        pass
-
-    def fire_step(self):
         pass
     # def step(self):
 
@@ -192,7 +183,6 @@ class Firm(Agent):
         self.applicants = []
         self.current_workers = []
         self.pending_workers = []  # Workers hired but waiting 1 step before starting work
-        self.action_plan = {"type": "none"}
 
     def set_initial_wage(self, gamma):
         # Set initial wage based on MPL
@@ -200,7 +190,7 @@ class Firm(Agent):
         mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
         # gamma is the fraction of MPL paid to workers (0.7 to 0.9 typical)
         self.monthly_wage = gamma * (mpl * self.output_price)
-        self.monthly_wage = max(self.monthly_wage, self.model.min_wage)
+        self.monthly_wage = max(self.monthly_wage, self.wage_floor(labor))
         # Make wage an integer for realism (since we're modeling in THB)
         self.monthly_wage = int(self.monthly_wage)
 
@@ -235,16 +225,26 @@ class Firm(Agent):
     def value_of_marginal_product(self, price, mp):
         return price * mp
 
-    def compute_profit(self, wage=None, labor_override=None, capital_override=None):
-        """Estimate profit for hypothetical wage/labor/capital without mutating state."""
-        wage_to_use = self.monthly_wage if wage is None else wage
+    def wage_floor(self, labor_override=None):
+        """Minimum allowable firm wage: max(min_wage, 50% of VMPL)."""
         labor = len(self.current_workers) if labor_override is None else labor_override
-        capital = self.capital if capital_override is None else capital_override
+        if labor <= 0:
+            return self.model.min_wage
+        mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
+        vmpl = mpl * self.output_price
+        return max(self.model.min_wage, 0.5 * vmpl)
+
+    def compute_profit(self, wage=None, labor_override=None):
+        """Estimate profit for hypothetical wage and/or labor without mutating state."""
+        labor = len(self.current_workers) if labor_override is None else labor_override
+        floor = self.wage_floor(labor)
+        wage_to_use = self.monthly_wage if wage is None else wage
+        wage_to_use = max(wage_to_use, floor)
         labor = max(labor, 1e-6)
-        output = self.productivity * (capital ** (1 - self.alpha)) * (labor ** self.alpha)
+        output = self.productivity * (self.capital ** (1 - self.alpha)) * (labor ** self.alpha)
         revenue = output * self.output_price
         total_wage_cost = wage_to_use * labor
-        capital_cost = capital * self.rental_rate
+        capital_cost = self.capital * self.rental_rate
         return revenue - total_wage_cost - capital_cost
 
     def compute_vacancy_rate(self):
@@ -306,8 +306,10 @@ class Firm(Agent):
 
         self.applicants = []
 
-        # Reset vacancy clock if filled; persistence counted in post_vacancies_step
-        if self.vacancies == 0:
+        # Track persistence of unfilled roles
+        if self.vacancies > 0:
+            self.vacancy_duration += 1
+        else:
             self.vacancy_duration = 0
 
     def handle_quit(self, worker):
@@ -320,8 +322,7 @@ class Firm(Agent):
         """Remove one worker and update their employment state."""
         if not self.current_workers:
             return False
-        # Fire the most senior worker (the one who has been employed the longest) for realism, or we could randomize this as well
-        worker = self.current_workers.pop(0)
+        worker = self.current_workers.pop()
         worker.employed = False
         worker.employer = None
         worker.monthly_wage = 0
@@ -349,6 +350,8 @@ class Firm(Agent):
                 w.monthly_wage = self.monthly_wage
                 w.daily_wage = self.daily_wage
 
+        return fired_anyone
+
     def optimize_wage_annual(self):
         """Annual wage adjustment based on profit and labor market conditions."""
         # Wage moves only if it improves profit given current headcount
@@ -356,143 +359,55 @@ class Firm(Agent):
         self.profit = self.compute_profit()
 
     def adjust_wage(self, base_delta=0.02, target_quit=0.02, quit_gamma=0.05, current_profit=None):
+        """Three-stage wage logic: (1) vacancy/quit pressure, (2) profit projection, (3) VMPL gap nudges."""
         vacancy_rate = self.compute_vacancy_rate()
         quit_rate = self.compute_quit_rate()
 
-        # Scale the step size by current hiring pressure
-        delta_scale = 1 + vacancy_rate + quit_rate
-        delta = base_delta * delta_scale
-
         current_wage = self.monthly_wage
         current_profit = self.profit if current_profit is None else current_profit
+        new_wage = current_wage
 
-        profit_up = self.compute_profit(current_wage * (1 + delta))
-        profit_down = self.compute_profit(max(current_wage * (1 - delta), self.model.min_wage))
-
-        # Profit-based direction: move wages the way profit improves most
-        if profit_up > current_profit and profit_up >= profit_down:
-            new_wage = current_wage * (1 + delta)
-        elif profit_down > current_profit:
-            new_wage = max(current_wage * (1 - delta), self.model.min_wage)
+        # 1) Vacancy/quit pressure first: if we cannot hire (open roles persist), lift wages immediately
+        cannot_hire = self.vacancies > 0 and self.vacancy_duration > 0
+        if cannot_hire:
+            # Scale more aggressively with vacancy pressure
+            delta = base_delta * (1 + vacancy_rate + quit_rate)
+            new_wage = max(current_wage * (1 + delta * (1 + self.vacancy_duration)), self.wage_floor())
         else:
-            new_wage = current_wage
+            # 2) Profit projection branch when hiring is not blocked; use a calmer scaler
+            delta = base_delta
+            candidate_up = max(current_wage * (1 + delta), self.wage_floor())
+            candidate_down = max(current_wage * (1 - delta), self.wage_floor())
+            profit_up = self.compute_profit(candidate_up)
+            profit_down = self.compute_profit(candidate_down)
 
-        # Vacancy pressure: persistent vacancies nudge wages upward
-        if self.vacancy_duration >= 3:
-            new_wage *= (1 + delta * 0.5)
+            if profit_up > current_profit and profit_up >= profit_down:
+                new_wage = candidate_up
+            elif profit_down > current_profit:
+                new_wage = candidate_down
 
-        # Quit-rate targeting: push wage toward desired turnover
-        quit_adjustment = quit_gamma * (quit_rate - target_quit)
-        new_wage *= (1 + quit_adjustment)
+            quit_adjustment = quit_gamma * (quit_rate - target_quit)
+            new_wage *= (1 + quit_adjustment)
+
+        # 3) VMPL wage-gap correction: probabilistic nudge upward when wage < VMPL
+        labor = len(self.current_workers)
+        if labor > 0:
+            mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
+            vmpl = mpl * self.output_price
+            wage_gap = max(vmpl - new_wage, 0)
+            if wage_gap > 0:
+                # Probability rises with the gap but is capped
+                gap_ratio = wage_gap / max(vmpl, 1e-6)
+                bump_prob = min(0.9, gap_ratio)
+                if random.random() < bump_prob:
+                    new_wage *= (1 + delta * (1 + gap_ratio))
 
         # Apply bounds and propagate to workers
-        self.monthly_wage = int(max(new_wage, self.model.min_wage))
+        self.monthly_wage = int(max(new_wage, self.wage_floor()))
         self.daily_wage = self.monthly_wage / 20
         for w in self.current_workers:
             w.monthly_wage = self.monthly_wage
             w.daily_wage = self.daily_wage
-
-    def decide_action_step(self):
-        """Select exactly one action per step that maximizes profit change."""
-        self.applicants = []  # drop stale applicants, keep vacancies to track persistence
-        base_profit = self.compute_profit()
-
-        # Always allow neutral option
-        best_action = {"type": "none", "profit": base_profit}
-
-        labor_count = len(self.current_workers)
-        vacancy_rate = self.compute_vacancy_rate()
-        quit_rate = self.compute_quit_rate()
-        annual_window = self.model.step_count > 0 and self.model.step_count % 12 == 0
-
-        # Hiring: search for the best number of hires (bounded) in this step
-        max_hires = min(5, max(1, self.model.num_workers - labor_count))
-        for k in range(1, max_hires + 1):
-            profit_hire = self.compute_profit(labor_override=labor_count + k)
-            if profit_hire - base_profit > best_action["profit"] - base_profit:
-                best_action = {"type": "hire", "profit": profit_hire, "hire_slots": k}
-
-        # Firing: search for best number of firings up to current workforce
-        max_fires = min(5, labor_count)
-        for k in range(1, max_fires + 1):
-            profit_fire = self.compute_profit(labor_override=labor_count - k)
-            if profit_fire - base_profit > best_action["profit"] - base_profit:
-                best_action = {"type": "fire", "profit": profit_fire, "fire_slots": k}
-
-        if annual_window:
-            base_delta = 0.02  # 2% base wage adjustment in annual review
-            delta = base_delta * (1 + vacancy_rate + quit_rate)
-
-            # Wage increase
-            wage_up = self.monthly_wage * (1 + delta)
-            profit_wage_up = self.compute_profit(wage=wage_up)
-            if profit_wage_up - base_profit > best_action["profit"] - base_profit:
-                best_action = {"type": "wage_up", "profit": profit_wage_up, "target_wage": wage_up}
-
-            # Wage decrease
-            wage_down = max(self.monthly_wage * (1 - base_delta), self.model.min_wage)
-            profit_wage_down = self.compute_profit(wage=wage_down)
-            if profit_wage_down - base_profit > best_action["profit"] - base_profit:
-                best_action = {"type": "wage_down", "profit": profit_wage_down, "target_wage": wage_down}
-
-            # Capital invest
-            cap_up = self.capital * 1.05
-            profit_cap_up = self.compute_profit(capital_override=cap_up)
-            if profit_cap_up - base_profit > best_action["profit"] - base_profit:
-                best_action = {"type": "invest_capital", "profit": profit_cap_up, "target_capital": cap_up}
-
-            # Capital divest
-            cap_down = self.capital * 0.95
-            profit_cap_down = self.compute_profit(capital_override=cap_down)
-            if profit_cap_down - base_profit > best_action["profit"] - base_profit:
-                best_action = {"type": "divest_capital", "profit": profit_cap_down, "target_capital": cap_down}
-
-        # Only act if there is a non-negative gain; otherwise do nothing
-        if best_action["profit"] - base_profit <= 0:
-            self.action_plan = {"type": "none"}
-            print(f"Firm {self.unique_id} decided to take no action with expected profit {base_profit:.2f}")
-            return
-
-        self.action_plan = best_action
-        print(f"Firm {self.unique_id} decided on action: {self.action_plan['type']} with expected profit {self.action_plan['profit']:.2f} (base profit: {base_profit:.2f})")
-
-    def post_vacancies_step(self):
-        """Advertise planned vacancies so workers can see them this step."""
-        prev_vacancies = self.vacancies
-        if self.action_plan.get("type") == "hire":
-            self.vacancies = self.action_plan.get("hire_slots", 1)
-        else:
-            # Any non-hiring action clears openings and resets duration
-            self.vacancies = 0
-
-        if self.vacancies > 0:
-            # Only increments when we keep choosing hire and vacancies persist
-            self.vacancy_duration = self.vacancy_duration + 1 if prev_vacancies > 0 else 1
-        else:
-            self.vacancy_duration = 0
-
-    def apply_action_step(self):
-        action_type = self.action_plan.get("type", "none")
-
-        if action_type == "hire":
-            self.hire()
-        elif action_type == "fire":
-            fire_slots = self.action_plan.get("fire_slots", 1)
-            for _ in range(fire_slots):
-                self.fire_one_worker()
-        elif action_type == "wage_up" or action_type == "wage_down":
-            new_wage = int(max(self.action_plan.get("target_wage", self.monthly_wage), self.model.min_wage))
-            self.monthly_wage = new_wage
-            self.daily_wage = self.monthly_wage / 20
-            for w in self.current_workers:
-                w.monthly_wage = self.monthly_wage
-                w.daily_wage = self.daily_wage
-        elif action_type == "invest_capital" or action_type == "divest_capital":
-            target_capital = self.action_plan.get("target_capital", self.capital)
-            self.capital = target_capital
-
-        # Reset plan after execution
-        self.action_plan = {"type": "none"}
 
     def onboard_workers_step(self):
         """Move workers from pending to current (1-step hiring delay)"""
@@ -502,6 +417,22 @@ class Firm(Agent):
         for w in self.current_workers:
             w.monthly_wage = self.monthly_wage
             w.daily_wage = self.daily_wage
+
+    def adjust_employment_step(self):
+        """Single-stage employment adjustment before worker job search."""
+        fired_anyone = self.fire_for_profit()
+        if fired_anyone:
+            # If we downsized this step, do not open vacancies until next period
+            self.vacancies = 0
+            self.applicants = []
+            self.vacancy_duration = 0
+            return
+
+        # No firing, so consider expanding by posting vacancies
+        self.post_vacancies()
+
+    def hire_step(self):
+        self.hire()
 
     def step(self):
         self.last_worker_count = len(self.current_workers)
@@ -513,16 +444,18 @@ class Firm(Agent):
         # Wage cost
         total_wage_cost = sum(w.monthly_wage for w in self.current_workers)
         
-        # Distribute wages to workers
-        # for w in self.current_workers:
-        #     w.savings += w.monthly_wage
-
         # Capital rental cost
         capital_cost = self.capital * self.rental_rate
 
         # Profit calculation
         profit = revenue - total_wage_cost - capital_cost
         self.profit = profit
+
+        # Adjust capital and wage every 12 steps but not in the first step to allow initial conditions to stabilize
+        if self.model.step_count % 12 == 0 and self.model.step_count > 0:
+            total_labor = len(self.current_workers)
+            self.adjust_capital(total_labor, self.rental_rate)
+            self.optimize_wage_annual()
 
         self.prev_profit = self.profit
         self.quits_last_month = 0
@@ -734,14 +667,14 @@ class Firm_Old(Agent):
 # MODEL
 # -------------------
 class LaborMarketModel(Model):
-    def __init__(self, N_workers=100, N_firms=10, min_wage=7700, simulator=None, seed=42):
+    def __init__(self, N_workers=300, N_firms=20, min_wage=7700, simulator=None, seed=42):
         super().__init__(seed=seed)
         if simulator:
             self.simulator = simulator
             self.simulator.setup(self)
         self.step_count = 0
         self.running = True # Needed for Mesa to know the model is running
-        self.schedule = StagedActivation(self, stage_list=["onboard_workers_step", "decide_action_step", "post_vacancies_step", "job_search_step", "apply_action_step", "step"], shuffle=False)
+        self.schedule = StagedActivation(self, stage_list=["onboard_workers_step", "adjust_employment_step", "job_search_step", "hire_step", "step"], shuffle=False)  #TODO Update list of stages later
         random.seed(seed)
 
         self.num_workers = N_workers
@@ -757,8 +690,7 @@ class LaborMarketModel(Model):
             self.schedule.add(w)
         for i in range(self.num_firms):
             f = Firm(f"F{i}", self, capital=random.uniform(10,100), rental_rate=500,
-                      productivity=random.uniform(0.8, 1.2), output_price=100)  #TODO: Tune these parameters to scale output and wages to realistic levels (can be adjusted based on calibration)
-            print(f"Created Firm {f.unique_id} with capital {f.capital:.2f}, productivity {f.productivity:.2f}")
+                      productivity=random.uniform(0.8, 1.2), output_price=100)  #TODO: Tune these parameters to scale output and wages to realistic levels (currently set to produce wages in the range of 20,000-40,000 THB per month, can be adjusted based on calibration)
             self.schedule.add(f)
 
         # Add initial workers to firms. Each firm gets between 3-5 workers to start
