@@ -210,16 +210,25 @@ class Firm(Agent):
         self.profit = 0
 
     # ---------- RL decision ----------
-    def set_initial_wage(self):
-        labor = len(self.current_workers)
+    def set_initial_wage(self, gamma):
+        # Set initial wage based on MPL
+        labor = len(self.current_workers)  # number of workers
         mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
         vmpl = mpl * self.output_price
         self.fixed_wage_floor = max(self.model.min_wage, 0.7 * vmpl)
-        self.monthly_wage = max(vmpl, self.wage_floor())
+        # gamma is the fraction of MPL paid to workers (0.7 to 0.9 typical)
+        self.monthly_wage = gamma * vmpl
+        self.monthly_wage = max(self.monthly_wage, self.wage_floor())
+        # Make wage an integer for realism (since we're modeling in THB)
         self.monthly_wage = int(self.monthly_wage)
-        
+
+        # print(f"Firm {self.unique_id} initial wage set to {self.monthly_wage:.2f} based on MPL of {mpl:.2f}")
+        self.daily_wage = self.monthly_wage / 20  # assuming 20 working days per month
+
+        # Set worker wages accordingly
         for w in self.current_workers:
             w.monthly_wage = self.monthly_wage
+            w.daily_wage = self.daily_wage
             
     def produce(self):
         labor = max(len(self.current_workers), 1e-6)
@@ -674,7 +683,7 @@ class LaborMarketModel(Model):
                             worker.monthly_wage = firm.monthly_wage
                             firm.current_workers.append(worker)
                             break
-            firm.set_initial_wage()
+            firm.set_initial_wage(gamma=0.8)
     
     def queue_firm_exit(self, firm):
         if firm not in self.pending_firm_exits:
