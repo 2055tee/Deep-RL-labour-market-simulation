@@ -202,6 +202,7 @@ class Firm(Agent):
         self.reward = 0
         
         self.monthly_wage = 0
+        self.fixed_wage_floor = None  # set once from initial VMPL and held constant thereafter
         self.quits_last_month = 0
 
         # RL
@@ -210,8 +211,11 @@ class Firm(Agent):
 
     # ---------- RL decision ----------
     def set_initial_wage(self):
-        mpl = self.marginal_product_labor(self.productivity, len(self.current_workers), self.alpha)
-        self.monthly_wage = max(mpl * self.output_price, 7700)
+        labor = len(self.current_workers)
+        mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
+        vmpl = mpl * self.output_price
+        self.fixed_wage_floor = max(self.model.min_wage, 0.7 * vmpl)
+        self.monthly_wage = max(vmpl, self.wage_floor())
         self.monthly_wage = int(self.monthly_wage)
         
         for w in self.current_workers:
@@ -258,7 +262,7 @@ class Firm(Agent):
                 w.monthly_wage = self.monthly_wage
         elif self.rl_action == 2:
             self.monthly_wage -= 100
-            self.monthly_wage = max(self.monthly_wage, 7700)
+            self.monthly_wage = max(self.monthly_wage, self.wage_floor())
             for w in self.current_workers:
                 w.monthly_wage = self.monthly_wage
         elif self.rl_action == 3:
@@ -380,14 +384,11 @@ class Firm(Agent):
     def value_of_marginal_product(self, price, mp):
         return price * mp
 
-    def wage_floor(self, labor_override=None):
-        """Minimum allowable firm wage: max(min_wage, 50% of VMPL)."""
-        labor = len(self.current_workers) if labor_override is None else labor_override
-        if labor <= 0:
+    def wage_floor(self):
+        """Fixed per-firm floor set once from initial VMPL during wage initialization."""
+        if self.fixed_wage_floor is None:
             return self.model.min_wage
-        mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
-        vmpl = mpl * self.output_price
-        return max(self.model.min_wage, 0.5 * vmpl)
+        return self.fixed_wage_floor
     
     def compute_vacancy_rate(self):
         positions = len(self.current_workers) + self.vacancies
@@ -596,7 +597,7 @@ class Firm(Agent):
     def compute_profit(self, wage=None, labor_override=None):
             """Estimate profit for hypothetical wage and/or labor without mutating state."""
             labor = len(self.current_workers) if labor_override is None else labor_override
-            floor = self.wage_floor(labor)
+            floor = self.wage_floor()
             wage_to_use = self.monthly_wage if wage is None else wage
             wage_to_use = max(wage_to_use, floor)
             labor = max(labor, 1e-6)

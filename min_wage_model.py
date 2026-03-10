@@ -168,6 +168,7 @@ class Firm(Agent):
         self.output_price = output_price  # Fixed market price for the firm's product (set to 50 THB per unit for now, can be adjusted based on calibration)
         self.monthly_wage = None # set based on initial MPL and updated over time, this is the wage paid to workers
         self.daily_wage = None # derived from monthly wage, this is the wage paid to workers per day (assuming 20 working days per month)
+        self.fixed_wage_floor = None  # set once from initial VMPL and held constant thereafter
         self.productivity = self.base_productivity * self.productivity_multiplier
         self.alpha = 0.65  # labor share
         self.profit = 0  # track latest profit for visualization
@@ -189,9 +190,11 @@ class Firm(Agent):
         # Set initial wage based on MPL
         labor = len(self.current_workers)  # number of workers
         mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
+        vmpl = mpl * self.output_price
+        self.fixed_wage_floor = max(self.model.min_wage, 0.7 * vmpl)
         # gamma is the fraction of MPL paid to workers (0.7 to 0.9 typical)
-        self.monthly_wage = gamma * (mpl * self.output_price)
-        self.monthly_wage = max(self.monthly_wage, self.wage_floor(labor))
+        self.monthly_wage = gamma * vmpl
+        self.monthly_wage = max(self.monthly_wage, self.wage_floor())
         # Make wage an integer for realism (since we're modeling in THB)
         self.monthly_wage = int(self.monthly_wage)
 
@@ -213,32 +216,27 @@ class Firm(Agent):
     
     def marginal_product_labor(self, A, labor, alpha):
         # Marginal Product of Labor: MPL = dQ/dL = A * alpha * K^beta * L^(alpha-1)
-        if labor == 0:
-            return 0
+        labor = max(labor, 1e-6)  # Avoid zero labor input
         return A * alpha * (self.capital ** (1 - alpha)) * (labor ** (alpha - 1))
         
     def marginal_product_capital(self, A, labor, alpha):
         # Marginal Product of Capital: MPK = dQ/dK = A * (1-alpha) * K^(-alpha) * L^alpha
-        if self.capital == 0:
-            return 0
+        self.capital = max(self.capital, 1e-6)  # Avoid zero capital input
         return A * (1 - alpha) * (self.capital ** (-alpha)) * (labor ** alpha)
     
     def value_of_marginal_product(self, price, mp):
         return price * mp
 
-    def wage_floor(self, labor_override=None):
-        """Minimum allowable firm wage: max(min_wage, 50% of VMPL)."""
-        labor = len(self.current_workers) if labor_override is None else labor_override
-        if labor <= 0:
+    def wage_floor(self):
+        """Fixed per-firm floor set once from initial VMPL during wage initialization."""
+        if self.fixed_wage_floor is None:
             return self.model.min_wage
-        mpl = self.marginal_product_labor(self.productivity, labor, self.alpha)
-        vmpl = mpl * self.output_price
-        return max(self.model.min_wage, 0.5 * vmpl)
+        return self.fixed_wage_floor
 
     def compute_profit(self, wage=None, labor_override=None):
         """Estimate profit for hypothetical wage and/or labor without mutating state."""
         labor = len(self.current_workers) if labor_override is None else labor_override
-        floor = self.wage_floor(labor)
+        floor = self.wage_floor()
         wage_to_use = self.monthly_wage if wage is None else wage
         wage_to_use = max(wage_to_use, floor)
         labor = max(labor, 1e-6)
