@@ -1,0 +1,8 @@
+Parameter normalization (normalize for 200k steps the profti range from -5k to 200k)
+
+How to train :
+- how many agent should I have (1 firm , 1 worker, all firm and agent)
+- observation value what should each agent observe
+- reward function , constant value or difference between actions
+- agent actions
+- steps / batch / epoch how many steo should I train?
