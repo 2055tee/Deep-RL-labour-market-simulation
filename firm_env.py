@@ -1,4 +1,4 @@
-# labor_env.py
+# firm_env.py
 
 import gymnasium as gym
 import numpy as np
@@ -13,12 +13,14 @@ class LaborMarketEnv(gym.Env):
 
         self.rl_firm_id = 0
         self.rl_firm = self.model.firms[self.rl_firm_id]
+        self.current_step = 0
+        self.max_step = 2000
 
         self.action_space = gym.spaces.Discrete(5)
         
         self.observation_space = gym.spaces.Box(
-            low=0,
-            high=1,
+            low=-5,
+            high=5,
             shape=(6,),
             dtype=np.float32
         )
@@ -41,11 +43,11 @@ class LaborMarketEnv(gym.Env):
             firm.monthly_wage / 15000,
             np.log1p(firm.capital) / 15,
             np.arcsinh(firm.profit / 1000) / 5.0,
-            firm.vacancies/10,
+            firm.vacancies,
             current_worker/40
         ], dtype=np.float32)
         
-        print(obs)
+        # print(obs)
         
         return obs
 
@@ -58,11 +60,17 @@ class LaborMarketEnv(gym.Env):
         self.model.step()
 
         reward = self.rl_firm.reward
+        self.current_step += 1
 
         obs = self.observe()
 
         terminated = False
-        truncated = False   
+        truncated = False
+        
+        if self.current_step >= self.max_step:
+            truncated = True
+            self.current_step = 0
+        
 
         return obs, reward, terminated, truncated, {}
 

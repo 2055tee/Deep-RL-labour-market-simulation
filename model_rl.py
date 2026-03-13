@@ -200,6 +200,7 @@ class Firm(Agent):
         self.last_profit = 0
         self.deficit_months = 0
         self.reward = 0
+        self.vacancy_duration = 0
         
         self.monthly_wage = 0
         self.fixed_wage_floor = None  # set once from initial VMPL and held constant thereafter
@@ -264,7 +265,7 @@ class Firm(Agent):
             self.capital *= 0.95  # decrease capital by 5%
              
     def rl_decision(self):
-        print(f"step {self.steps} rl choose {self.rl_action} with wage {self.monthly_wage} with no.worker {len(self.current_workers) } vac {self.vacancies} profit {self.profit} reward {self.reward}")
+        # print(f"step {self.steps} rl choose {self.rl_action} with wage {self.monthly_wage} with no.worker {len(self.current_workers) } vac {self.vacancies} profit {self.profit} reward {self.reward}")
         if self.rl_action == 1:
             self.monthly_wage += 100
             for w in self.current_workers:
@@ -365,16 +366,26 @@ class Firm(Agent):
             if self.uid != self.model.rl_firm_id:
                 self.optimize_wage_annual()
         
-        if self.profit <= 0 and self.last_profit >= self.profit:
-            self.reward = -200
-            self.last_profit = self.profit
-        elif self.profit <= 0 and self.last_profit < self.profit:
-            self.reward = -300
-            self.last_profit = self.profit
+        profit_change = self.profit - self.last_profit
+
+        # rl reward function
+        if self.profit <= 0:
+            if profit_change > 0:
+                # Progressing toward zero (Recovering)
+                self.reward = -1.0 
+            else:
+                # Staying negative or getting worse
+                self.reward = -5.0
         else:
-            profit_change = self.profit - self.last_profit
-            self.reward = profit_change / 10
-            self.last_profit = self.profit
+            # POSITIVE PROFIT ZONE
+            # Combine a "Growth" reward with a "Stability" bonus
+            growth_reward = profit_change / 2500
+            stability_bonus = self.profit / 10000 # Reward for just being profitable
+            
+            self.reward = growth_reward + stability_bonus
+
+        # Update state
+        self.last_profit = self.profit
 
         self.steps += 1
         
@@ -407,19 +418,6 @@ class Firm(Agent):
         baseline_workers = self.last_worker_count + self.quits_last_month
         baseline_workers = max(baseline_workers, 1)
         return self.quits_last_month / baseline_workers
-    
-    def adjust_capital(self, labor, rental_rate):
-        # Run every 12 steps to adjust capital based on the value of the marginal product of capital
-        mpk = self.marginal_product_capital(self.productivity, labor, self.alpha)
-        vmpk = self.value_of_marginal_product(self.output_price, mpk)
-        # print(f"Firm {self.unique_id} VMPK: {vmpk:.2f}, Rental Rate: {rental_rate:.2f}")
-        
-        if vmpk > rental_rate:
-            # invest more in capital
-            self.capital *= 1.05  # increase capital by 5%
-        elif vmpk < rental_rate:
-            # reduce capital
-            self.capital *= 0.95  # decrease capital by 5%
     
     def adjust_capital(self, labor, rental_rate):
         # Run every 12 steps to adjust capital based on the value of the marginal product of capital
