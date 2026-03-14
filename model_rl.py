@@ -265,28 +265,42 @@ class Firm(Agent):
             self.capital *= 0.95  # decrease capital by 5%
              
     def rl_decision(self):
-        # print(f"step {self.steps} rl choose {self.rl_action} with wage {self.monthly_wage} with no.worker {len(self.current_workers) } vac {self.vacancies} profit {self.profit} reward {self.reward}")
+        # 0 = hold
+        # 1 = wage +300  (aggressive raise)   — wage-only: restricted to every 12 steps
+        # 2 = wage +100  (soft raise)          — wage-only: restricted to every 12 steps
+        # 3 = wage -100  (soft cut)            — wage-only: restricted to every 12 steps
+        # 4 = wage -300  (aggressive cut)      — wage-only: restricted to every 12 steps
+        # 5 = post 1 vacancy                   — allowed every step (mirrors adjust_employment_step)
+        # 6 = fire 1 worker                    — allowed every step (mirrors adjust_employment_step)
+        wage_action = self.rl_action in (1, 2, 3, 4)
+        if wage_action and self.steps % 12 != 0:
+            return  # wage can only change annually, matching heuristic firms
+
         if self.rl_action == 1:
-            self.monthly_wage += 100
+            self.monthly_wage += 300
             for w in self.current_workers:
                 w.monthly_wage = self.monthly_wage
         elif self.rl_action == 2:
-            self.monthly_wage -= 100
-            self.monthly_wage = max(self.monthly_wage, self.wage_floor())
+            self.monthly_wage += 100
             for w in self.current_workers:
                 w.monthly_wage = self.monthly_wage
         elif self.rl_action == 3:
-            self.vacancies += 1
+            self.monthly_wage = max(self.monthly_wage - 100, self.wage_floor())
+            for w in self.current_workers:
+                w.monthly_wage = self.monthly_wage
         elif self.rl_action == 4:
-            # Fire a random worker if there are any
+            self.monthly_wage = max(self.monthly_wage - 300, self.wage_floor())
+            for w in self.current_workers:
+                w.monthly_wage = self.monthly_wage
+        elif self.rl_action == 5:
+            self.vacancies += 1
+        elif self.rl_action == 6:
             if self.current_workers:
                 fired_worker = random.choice(self.current_workers)
                 self.current_workers.remove(fired_worker)
                 fired_worker.employed = False
                 fired_worker.employer = None
                 fired_worker.monthly_wage = 0
-                
-        # print(f"worker list {len(self.current_workers)}")
 
     # ---------- Hiring ----------
 
@@ -368,21 +382,13 @@ class Firm(Agent):
         
         profit_change = self.profit - self.last_profit
 
-        # rl reward function
-        if self.profit <= 0:
-            if profit_change > 0:
-                # Progressing toward zero (Recovering)
-                self.reward = -1.0 
-            else:
-                # Staying negative or getting worse
-                self.reward = -5.0
-        else:
-            # POSITIVE PROFIT ZONE
-            # Combine a "Growth" reward with a "Stability" bonus
-            growth_reward = profit_change / 2500
-            stability_bonus = self.profit / 10000 # Reward for just being profitable
-            
-            self.reward = growth_reward + stability_bonus
+        # Smooth, continuous reward: level signal (70%) + trend signal (30%)
+        # tanh keeps rewards bounded in (-1, 1) with no discontinuity at profit=0.
+        # Scale 20000 ≈ one firm's monthly revenue range; 5000 ≈ meaningful change.
+        self.reward = (
+            0.7 * float(np.tanh(self.profit       / 20_000)) +
+            0.3 * float(np.tanh(profit_change     /  5_000))
+        )
 
         # Update state
         self.last_profit = self.profit
