@@ -2,21 +2,22 @@
 # viz_compare.py
 #
 # Runs one solo RL episode, compares every decision to the heuristic rule,
-# and saves each chart to visualizations/ as a separate PNG.
+# and saves each chart to visualizations/solo/ as a separate PNG.
 #
-# Output files:
-#   visualizations/01_profit.png         -- profit over time + divergence markers
-#   visualizations/02_wage.png           -- wage decisions & when RL differed
-#   visualizations/03_workers.png        -- headcount & hire/fire divergences
-#   visualizations/04_actions_rl.png     -- what the RL agent chose each step
-#   visualizations/05_actions_rule.png   -- what the heuristic would have chosen
-#   visualizations/06_divergence_map.png -- step-by-step divergence outcome grid
-#   visualizations/07_outcome_summary.png-- bar chart: better / worse / neutral
+# Output files (visualizations/solo/):
+#   profit_detail.png      -- profit over time + divergence markers
+#   wage_detail.png        -- wage decisions & when RL differed
+#   workers_detail.png     -- headcount & hire/fire divergences
+#   actions_rl.png         -- what the RL agent chose each step
+#   actions_heuristic.png  -- what the heuristic would have chosen
+#   divergence_map.png     -- step-by-step divergence outcome grid
+#   outcome_summary.png    -- bar chart: better / worse / neutral
 #
 # Usage:
 #   python viz_compare.py
 
 import sys
+import random
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -24,9 +25,12 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from pathlib import Path
 
+# Must match EVAL_SEED in viz_all_models.py so both scripts show the same episode.
+EVAL_SEED = 42
+
 ROOT    = Path(__file__).parent.resolve()
-VIZ_DIR = ROOT / "visualizations"
-VIZ_DIR.mkdir(exist_ok=True)
+VIZ_DIR = ROOT / "visualizations" / "solo"
+VIZ_DIR.mkdir(parents=True, exist_ok=True)
 
 sys.path.insert(0, str(ROOT / "solo"))
 for mod in ["model_rl", "firm_env", "rl_vis"]:
@@ -82,9 +86,9 @@ def styled_fig(w=14, h=7):
 
 def save(fig, name):
     path = VIZ_DIR / name
-    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    fig.savefig(path, dpi=130, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
-    print(f"  saved: {path.name}")
+    print(f"  saved: solo/{path.name}")
 
 
 def wage_cycle_lines(ax, alpha=0.25):
@@ -128,6 +132,8 @@ def heuristic_action(firm, step):
 # ------------------------------------------------------------------ #
 
 def run_episode():
+    random.seed(EVAL_SEED)
+    np.random.seed(EVAL_SEED)
     policy = MaskablePPO.load(str(ROOT / "solo" / "solo_model"))
     env    = LaborMarketEnv()
     obs, _ = env.reset()
@@ -228,7 +234,7 @@ def chart_profit(records):
     ax.legend(handles=handles, facecolor=PANEL, edgecolor=GRID,
               labelcolor=TEXT, fontsize=9, loc="upper left")
 
-    save(fig, "01_profit.png")
+    save(fig, "profit_detail.png")
 
 
 # ------------------------------------------------------------------ #
@@ -280,7 +286,7 @@ def chart_wage(records):
     ax.legend(handles=handles, facecolor=PANEL, edgecolor=GRID,
               labelcolor=TEXT, fontsize=9, loc="best")
 
-    save(fig, "02_wage.png")
+    save(fig, "wage_detail.png")
 
 
 # ------------------------------------------------------------------ #
@@ -324,7 +330,7 @@ def chart_workers(records):
     ax.legend(handles=handles, facecolor=PANEL, edgecolor=GRID,
               labelcolor=TEXT, fontsize=9, loc="best")
 
-    save(fig, "03_workers.png")
+    save(fig, "workers_detail.png")
 
 
 # ------------------------------------------------------------------ #
@@ -439,7 +445,7 @@ def chart_divergence_map(records):
               labelcolor=TEXT, fontsize=10,
               loc="lower center", bbox_to_anchor=(0.5, -0.18), ncol=4)
 
-    save(fig, "06_divergence_map.png")
+    save(fig, "divergence_map.png")
 
 
 # ------------------------------------------------------------------ #
@@ -528,7 +534,7 @@ def chart_outcome_summary(records):
     plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
 
     plt.tight_layout(pad=2.0)
-    save(fig, "07_outcome_summary.png")
+    save(fig, "outcome_summary.png")
 
 
 # ------------------------------------------------------------------ #
@@ -551,10 +557,13 @@ if __name__ == "__main__":
     chart_profit(records)
     chart_wage(records)
     chart_workers(records)
-    chart_action_strip(records, "rl_action", "RL Agent",       "04_actions_rl.png")
-    chart_action_strip(records, "h_action",  "Heuristic Rule", "05_actions_rule.png")
+    chart_action_strip(records, "rl_action", "RL Agent",       "actions_rl.png")
+    chart_action_strip(records, "h_action",  "Heuristic Rule", "actions_heuristic.png")
     chart_divergence_map(records)
     chart_outcome_summary(records)
 
     print()
-    print("Done. Open the visualizations/ folder to view all charts.")
+    print("Done. Charts saved to: visualizations/solo/")
+    print("  profit_detail.png      wage_detail.png     workers_detail.png")
+    print("  actions_rl.png         actions_heuristic.png")
+    print("  divergence_map.png     outcome_summary.png")
