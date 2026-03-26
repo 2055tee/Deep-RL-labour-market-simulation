@@ -1,9 +1,0 @@
-https://ccl.northwestern.edu/netlogo/models/community/Social%20Capital%20in%20Social%20Networks
-https://ccl.northwestern.edu/netlogo/models/community/A%20model%20of%20social%20influence%20-%20Simone%20Alessia
-https://ccl.northwestern.edu/netlogo/models/community/Friendship_model
-https://ccl.northwestern.edu/netlogo/models/community/abm_school_choice
-
-https://modelingcommons.org/browse/one_model/1450#model_tabs_browse_info
-https://modelingcommons.org/browse/one_model/6113#model_tabs_browse_info
-
-https://www.netlogoweb.org/launch#https://www.netlogoweb.org/assets/modelslib/Sample%20Models/Social%20Science/Prisoner's%20Dilemma/Prisoner's%20Dilemma%20N-Person%20Iterated.nlogox

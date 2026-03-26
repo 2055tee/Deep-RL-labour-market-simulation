@@ -1,4 +1,12 @@
-# cooperative/train.py  — train 3 RL firms with shared (cooperative) reward
+# cooperative/train.py  — train 3 RL firms with shared (cooperative) reward (LONG-RUN config)
+#
+# Changes vs short-run baseline:
+#   gamma          0.95 -> 0.99
+#   n_steps        512  -> 1024
+#   lr             3e-4 (fixed) -> linear decay 3e-4 -> 1e-5
+#   net_arch       [64,64] -> [256,256]
+#   total_timesteps 1M  -> 2M   (coop sees 3x fewer model steps per gym step)
+#   saves to       coop_model_longrun.zip  (original coop_model.zip untouched)
 
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
@@ -9,6 +17,12 @@ from rl_vis import LaborMetricsCallback
 
 def mask_fn(env):
     return env.action_masks()
+
+
+def linear_schedule(initial, final=1e-5):
+    def fn(progress_remaining):
+        return final + progress_remaining * (initial - final)
+    return fn
 
 
 N_ENVS = 4
@@ -23,31 +37,32 @@ model = MaskablePPO(
     "MlpPolicy",
     env,
     verbose=1,
-    n_steps=512,
+    n_steps=1024,
     batch_size=256,
     n_epochs=10,
-    gamma=0.95,
+    gamma=0.99,
     gae_lambda=0.95,
-    learning_rate=3e-4,
+    learning_rate=linear_schedule(3e-4, 1e-5),
     clip_range=0.2,
     max_grad_norm=0.5,
     ent_coef=0.02,
     vf_coef=0.5,
+    policy_kwargs=dict(net_arch=[256, 256]),
     tensorboard_log="./tensorboard_logs/",
     device="auto"
 )
 
 callback = LaborMetricsCallback(
     log_dir="./tensorboard_logs",
-    algo_name="Coop_MaskablePPO",
+    algo_name="Coop_LongRun_MaskablePPO",
     keep_runs=3,
 )
 
 model.learn(
-    total_timesteps=1_000_000,
+    total_timesteps=2_000_000,
     callback=callback
 )
 
-model.save("coop_model")
-env.save("coop_vecnorm.pkl")
-print("Saved: coop_model.zip  coop_vecnorm.pkl")
+model.save("coop_model_longrun")
+env.save("coop_vecnorm_longrun.pkl")
+print("Saved: coop_model_longrun.zip  coop_vecnorm_longrun.pkl")
