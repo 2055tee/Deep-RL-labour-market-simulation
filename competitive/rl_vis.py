@@ -7,7 +7,8 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 ACTION_NAMES = {
     0: "hold", 1: "wage_up_300", 2: "wage_up_100",
-    3: "wage_dn_100", 4: "wage_dn_300", 5: "post_vacancy", 6: "fire_worker",
+    3: "wage_dn_100", 4: "wage_dn_300", 5: "post_vacancy",
+    6: "fire_worker", 7: "snap_to_market",
 }
 
 

@@ -43,7 +43,7 @@ model = MaskablePPO(
     "MlpPolicy",
     env,
     verbose=1,
-    n_steps=1024,
+    n_steps=2048,
     batch_size=256,
     n_epochs=10,
     gamma=0.99,
@@ -51,7 +51,7 @@ model = MaskablePPO(
     learning_rate=linear_schedule(3e-4, 1e-5),
     clip_range=0.2,
     max_grad_norm=0.5,
-    ent_coef=0.02,
+    ent_coef=0.08,   # push hard on exploration to break hold-dominance plateau
     vf_coef=0.5,
     policy_kwargs=dict(net_arch=[256, 256]),
     tensorboard_log=str(OUT_DIR / "tensorboard_logs"),
@@ -65,7 +65,7 @@ callback = ReformedMetricsCallback(
 )
 
 model.learn(
-    total_timesteps=300_000,   # quick verification run; increase to 1_000_000 for full training
+    total_timesteps=3_000_000,
     callback=callback,
 )
 

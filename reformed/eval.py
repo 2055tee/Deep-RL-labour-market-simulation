@@ -28,7 +28,7 @@ OUT_DIR    = Path(__file__).parent
 MODEL_PATH = OUT_DIR / "reformed_model.zip"
 NORM_PATH  = OUT_DIR / "reformed_vecnorm.pkl"
 
-N_STEPS = 120
+N_STEPS = 350  # near-full episode (training horizon=360; stop before reset so last step isn't post-reset)
 SEEDS   = [42, 123, 456, 789, 1000, 7, 13, 99, 2025, 314]
 
 
@@ -48,7 +48,7 @@ def run_heuristic(seeds=SEEDS, n_steps=N_STEPS) -> dict:
     rl_workers_h = []; rl_profit_h = []; rl_wage_h = []
 
     for seed in seeds:
-        m = LaborMarketModel(use_wage_gap_prob=False, rl_firm_id=None, seed=seed)
+        m = LaborMarketModel(use_wage_gap_prob=True, rl_firm_id=None, seed=seed)
         emp_r = []; profit_r = []; wage_r = []; firms_r = []; gini_r = []
         rl_w = []; rl_p = []; rl_wg = []
 
@@ -93,7 +93,13 @@ def run_rl(rl_model, seeds=SEEDS, n_steps=N_STEPS) -> dict:
     def mask_fn(env):
         return env.action_masks()
 
+    import random
+
     for seed in seeds:
+        # Seed BEFORE env creation so ReformedFirmEnv.reset() uses seeded randomness
+        random.seed(seed)
+        np.random.seed(seed)
+
         raw = DummyVecEnv([lambda: ActionMasker(ReformedFirmEnv(), mask_fn)])
         vec = VecNormalize.load(str(NORM_PATH), raw)
         vec.training = False
@@ -102,12 +108,8 @@ def run_rl(rl_model, seeds=SEEDS, n_steps=N_STEPS) -> dict:
         obs = vec.reset()
         env_inner = vec.envs[0].env  # ReformedFirmEnv
 
-        # Re-seed
-        import random
-        random.seed(seed)
-        np.random.seed(seed)
-
         emp_r = []; profit_r = []; wage_r = []; firms_r = []; gini_r = []
+
         rl_w = []; rl_p = []; rl_wg = []
 
         for step in range(n_steps):
@@ -211,27 +213,36 @@ def _verdict(res_rl: dict, res_base: dict):
     print("\n" + "=" * 54)
     print("  VERDICT — RL firm vs All-Heuristic")
     print("=" * 54)
-    scorecard = [
-        ("Employment %",   "employment", True),
-        ("Market Wage",    "avg_wage",   True),
-        ("Firms Alive",    "n_firms",    True),
-        ("Wage Gini",      "wage_gini",  False),
-        ("RL Workers",     "rl_workers", False),  # fewer = less hoarding
-        ("RL Profit",      "rl_profit",  True),
-    ]
+    # Scorecard:
+    #   Market metrics  → compare RL run vs heuristic run (different market conditions)
+    #   RL firm metrics → compare RL firm vs its OWN market average (same run, fair)
     wins_rl = wins_base = 0
-    for name, key, higher_better in scorecard:
-        v_rl   = res_rl[key][:, -1].mean()
-        v_base = res_base[key][:, -1].mean()
-        diff   = v_rl - v_base
+
+    def _score(name, v_rl, v_base, higher_better):
+        nonlocal wins_rl, wins_base
+        diff = v_rl - v_base
         if higher_better:
             winner = "RL  " if diff > 0 else "Base"
-            wins_rl += (diff > 0); wins_base += (diff <= 0)
+            wins_rl   += int(diff > 0)
+            wins_base += int(diff <= 0)
         else:
             winner = "RL  " if diff < 0 else "Base"
-            wins_rl += (diff < 0); wins_base += (diff >= 0)
+            wins_rl   += int(diff < 0)
+            wins_base += int(diff >= 0)
         sign = "+" if diff > 0 else ""
-        print(f"  {name:<20}  RL={v_rl:8.1f}  Base={v_base:8.1f}  d={sign}{diff:.1f}  [{winner}]")
+        print(f"  {name:<24}  RL={v_rl:8.1f}  Cmp={v_base:8.1f}  d={sign}{diff:.1f}  [{winner}]")
+
+    # Market-level: RL run vs heuristic run
+    _score("Employment %",      res_rl["employment"][:,-1].mean(),  res_base["employment"][:,-1].mean(),  True)
+    _score("Market Wage",       res_rl["avg_wage"][:,-1].mean(),    res_base["avg_wage"][:,-1].mean(),    True)
+    _score("Firms Alive",       res_rl["n_firms"][:,-1].mean(),     res_base["n_firms"][:,-1].mean(),     True)
+    _score("Wage Gini",         res_rl["wage_gini"][:,-1].mean(),   res_base["wage_gini"][:,-1].mean(),   False)
+    # RL firm vs its own market avg (same run — did RL beat the market it's in?)
+    _score("RL Profit vs Mkt",  res_rl["rl_profit"][:,-1].mean(),   res_rl["avg_profit"][:,-1].mean(),    True)
+    # RL workers vs baseline market avg workers per firm
+    avg_workers_base = (res_base["rl_workers"][:,-1].mean())  # informational only, not scored
+    _score("RL Workers (fewer=better)", res_rl["rl_workers"][:,-1].mean(), res_base["rl_workers"][:,-1].mean(), False)
+    print(f"  {'(baseline F0 workers)':<24}  ref={avg_workers_base:.1f}")
     print(f"\n  Score:  RL={wins_rl}   Heuristic={wins_base}")
     print("=" * 54 + "\n")
 

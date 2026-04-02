@@ -96,24 +96,31 @@ class Worker(Agent):
     # ── Mesa stages ──────────────────────────────────────────────────
 
     def job_search_step(self):
-        # ── Market-quit: leave if below market wage for too long ──────
+        # ── Market-quit: probabilistic drain when below market wage ───
+        # Each month below threshold the quit probability rises via a
+        # sigmoid so workers trickle out gradually (no cliff).
+        #   months=1 → ~12%   months=2 → ~27%   months=4 → ~73%
+        # This prevents the batch-quit cliff when many workers share
+        # the same start date.
         if self.employed:
             active = self.model.active_firms()
             mkt_wage = float(np.mean([f.monthly_wage for f in active])) if active else self.monthly_wage
-            if self.monthly_wage < MARKET_QUIT_THRESHOLD * mkt_wage:
+            if self.monthly_wage < self.model.market_quit_threshold * mkt_wage:
                 self.months_below_mkt += 1
+                # sigmoid: p = 1 / (1 + exp(-(months - patience/2)))
+                x        = self.months_below_mkt - self.model.market_quit_patience / 2.0
+                quit_prob = 1.0 / (1.0 + np.exp(-x))
+                if random.random() < quit_prob:
+                    if self.employer:
+                        self.employer.handle_quit(self)
+                    self.employed         = False
+                    self.employer         = None
+                    self.monthly_wage     = 0
+                    self.daily_wage       = 0
+                    self.months_below_mkt = 0
+                    return
             else:
                 self.months_below_mkt = 0
-
-            if self.months_below_mkt >= MARKET_QUIT_PATIENCE:
-                if self.employer:
-                    self.employer.handle_quit(self)
-                self.employed          = False
-                self.employer          = None
-                self.monthly_wage      = 0
-                self.daily_wage        = 0
-                self.months_below_mkt  = 0
-                return
 
         # ── Utility quit: outside option dominates current job ────────
         if self.employed and self.utility_if_not_work() > self.utility_if_work(self.monthly_wage):
@@ -219,7 +226,7 @@ class Firm(Agent):
         labor = max(len(self.current_workers), 1)
         mpl   = self.marginal_product_labor(self.productivity, labor, self.alpha)
         vmpl  = mpl * self.output_price
-        self.fixed_wage_floor = max(self.model.min_wage, 0.7 * vmpl)
+        self.fixed_wage_floor = int(max(self.model.min_wage, 0.7 * vmpl))
         self.monthly_wage     = max(int(gamma * vmpl), self.wage_floor())
         self.daily_wage       = self.monthly_wage / 20
         for w in self.current_workers:
@@ -231,12 +238,15 @@ class Firm(Agent):
     def rl_decision(self):
         """
         0 = hold
-        1 = wage +300  (annual only)
-        2 = wage +100  (annual only)
-        3 = wage -100  (annual only)
-        4 = wage -300  (annual only)
+        1 = wage +300       (annual only)
+        2 = wage +100       (annual only)
+        3 = wage -100       (annual only)
+        4 = wage -300       (annual only)
         5 = post 1 vacancy  (every step, capped at MAX_VACANCIES)
         6 = fire 1 worker   (every step)
+        7 = snap to market  (every step) — set wage = current market mean,
+            rounded to nearest 100, clamped to wage_floor. Lets the firm
+            react to large market-wage jumps that +300/year cannot track.
         """
         wage_action = self.rl_action in (1, 2, 3, 4)
         if wage_action and self.steps % 12 != 0:
@@ -255,7 +265,7 @@ class Firm(Agent):
             self.monthly_wage = max(self.monthly_wage - 300, self.wage_floor())
             self._broadcast_wage()
         elif self.rl_action == 5:
-            if self.vacancies < MAX_VACANCIES:
+            if self.vacancies < self.model.max_vacancies:
                 self.vacancies += 1
         elif self.rl_action == 6:
             if self.current_workers:
@@ -264,6 +274,13 @@ class Firm(Agent):
                 w.employer     = None
                 w.monthly_wage = 0
                 w.daily_wage   = 0
+        elif self.rl_action == 7:
+            # Exclude self so own wage doesn't bias the market mean
+            others = [f.monthly_wage for f in self.model.active_firms() if f is not self]
+            mkt_wage = float(np.mean(others)) if others else self.monthly_wage
+            snapped = int(round(mkt_wage / 100.0) * 100)
+            self.monthly_wage = max(snapped, self.wage_floor())
+            self._broadcast_wage()
 
     def _broadcast_wage(self):
         self.daily_wage = self.monthly_wage / 20
@@ -451,11 +468,13 @@ class Firm(Agent):
             if self.uid != self.model.rl_firm_id:
                 self.optimize_wage_annual()
 
-        # Smooth reward for RL (bounded, level + trend)
+        # Pure profit reward — market-quit already punishes low wages naturally:
+        # wage < 91% market → workers leave → less output → profit drops.
+        # No artificial hoarding penalty needed; the environment handles it.
         profit_change = self.profit - self.last_profit
         self.reward = (
-            0.7 * float(np.tanh(self.profit        / 20_000)) +
-            0.3 * float(np.tanh(profit_change       /  5_000))
+            0.7 * float(np.tanh(self.profit       / 5_000)) +
+            0.3 * float(np.tanh(profit_change     / 2_000))
         )
 
         self.last_profit      = self.profit
@@ -484,6 +503,12 @@ class LaborMarketModel(Model):
     def __init__(self, N_workers=100, N_firms=10,
                  use_wage_gap_prob=True,
                  rl_firm_id=None,
+                 equal_terms=False,
+                 min_wage=7700,
+                 market_quit_threshold=None,
+                 market_quit_patience=None,
+                 max_vacancies=None,
+                 deficit_exit_months=24,
                  seed=None):
         super().__init__()
 
@@ -491,14 +516,19 @@ class LaborMarketModel(Model):
             random.seed(seed)
             np.random.seed(seed)
 
-        self.MAX_HOURS           = 192
-        self.min_wage            = 7700
-        self.deficit_exit_months = 24
-        self.use_wage_gap_prob   = use_wage_gap_prob
-        self.rl_firm_id          = rl_firm_id
-        self.rl_action           = 0
-        self.pending_firm_exits  = []
-        self._firm_counter       = N_firms   # for naming replacement firms
+        self.MAX_HOURS              = 192
+        self.min_wage               = int(min_wage)
+        self.deficit_exit_months    = deficit_exit_months
+        self.use_wage_gap_prob      = use_wage_gap_prob
+        self.equal_terms            = equal_terms
+        self.rl_firm_id             = rl_firm_id
+        self.rl_action              = 0
+        self.pending_firm_exits     = []
+        self._firm_counter          = N_firms
+        # Allow per-instance overrides; fall back to module constants
+        self.market_quit_threshold  = market_quit_threshold if market_quit_threshold is not None else MARKET_QUIT_THRESHOLD
+        self.market_quit_patience   = market_quit_patience  if market_quit_patience  is not None else MARKET_QUIT_PATIENCE
+        self.max_vacancies          = max_vacancies          if max_vacancies          is not None else MAX_VACANCIES
 
         self.schedule = StagedActivation(
             self,
@@ -519,11 +549,21 @@ class LaborMarketModel(Model):
                        random.uniform(0.3, 0.7))
             self.schedule.add(w)
 
+        # equal_terms=True: narrow ±20% band around market mean so the policy
+        # learns to use prod_vs_mkt / cap_vs_mkt obs features without being
+        # confounded by extreme luck-of-the-draw fundamentals.
+        # Full range (10–100 capital, 0.8–1.2 prod) used when equal_terms=False.
         for i in range(N_firms):
+            if self.equal_terms:
+                cap  = random.uniform(44, 66)    # ±20% of mean=55
+                prod = random.uniform(0.9, 1.1)  # ±10% of mean=1.0
+            else:
+                cap  = random.uniform(10, 100)
+                prod = random.uniform(0.8, 1.2)
             f = Firm(f"F{i}", self,
-                     capital=random.uniform(10, 100),
+                     capital=cap,
                      rental_rate=500,
-                     productivity=random.uniform(0.8, 1.2),
+                     productivity=prod,
                      output_price=100)
             self.schedule.add(f)
 
@@ -539,16 +579,23 @@ class LaborMarketModel(Model):
                     w.employed  = True
                     w.employer  = firm
                     firm.current_workers.append(w)
-            if firm.uid == self.rl_firm_id:
-                # RL firm starts at min wage so it doesn't accidentally hoard from day 1
-                firm.fixed_wage_floor = self.min_wage
-                firm.monthly_wage     = self.min_wage
-                firm.daily_wage       = self.min_wage / 20
-                for w in firm.current_workers:
-                    w.monthly_wage = firm.monthly_wage
-                    w.daily_wage   = firm.daily_wage
             else:
                 firm.set_initial_wage(gamma=0.8)
+
+        # RL firm starts at market mean wage (rounded to nearest 100).
+        # Starting near market gives the policy a clean, profitable baseline
+        # from step 1 — no need to spend 50+ steps cutting an inflated wage.
+        if self.rl_firm_id is not None:
+            rl_firm = next((f for f in self.firms if f.uid == self.rl_firm_id), None)
+            if rl_firm is not None:
+                others = [f.monthly_wage for f in self.firms if f is not rl_firm]
+                mkt_mean = int(round(float(np.mean(others)) / 100.0) * 100) if others else self.min_wage
+                rl_firm.fixed_wage_floor = self.min_wage
+                rl_firm.monthly_wage     = max(mkt_mean, self.min_wage)
+                rl_firm.daily_wage       = rl_firm.monthly_wage / 20
+                for w in rl_firm.current_workers:
+                    w.monthly_wage = rl_firm.monthly_wage
+                    w.daily_wage   = rl_firm.daily_wage
 
     def active_firms(self):
         return [f for f in self.firms if f.active]

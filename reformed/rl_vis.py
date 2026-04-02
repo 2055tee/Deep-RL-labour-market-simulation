@@ -27,6 +27,7 @@ ACTION_NAMES = {
     4: "wage_dn_300",
     5: "post_vacancy",
     6: "fire_worker",
+    7: "snap_to_market",
 }
 
 RL_FIRM_ID = "F0"
