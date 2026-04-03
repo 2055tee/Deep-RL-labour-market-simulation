@@ -21,8 +21,10 @@ from model_rl import LaborMarketModel
 
 class LaborMarketEnv(gym.Env):
 
-    def __init__(self):
-        self.model        = LaborMarketModel()
+    def __init__(self, n_workers=100, n_firms=10):
+        self.n_workers    = n_workers
+        self.n_firms      = n_firms
+        self.model        = LaborMarketModel(N_workers=n_workers, N_firms=n_firms)
         self.rl_firm_id   = 0
         self.rl_firm      = self.model.firms[self.rl_firm_id]
         self.current_step = 0
@@ -135,7 +137,11 @@ class LaborMarketEnv(gym.Env):
         return obs, reward, terminated, truncated, {}
 
     def reset(self, seed=None, options=None):
-        self.model        = LaborMarketModel()
+        import random as _random
+        if seed is not None:
+            _random.seed(seed)
+            np.random.seed(seed)
+        self.model        = LaborMarketModel(N_workers=self.n_workers, N_firms=self.n_firms)
         self.rl_firm      = self.model.firms[self.rl_firm_id]
         self.current_step = 0
         self.prev_profit  = 0.0

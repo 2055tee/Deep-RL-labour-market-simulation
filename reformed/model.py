@@ -93,7 +93,7 @@ class Worker(Agent):
             best = max(candidates, key=lambda f: self.utility_if_work(f.monthly_wage))
             best.applicants.append(self)
 
-    # ── Mesa stages ──────────────────────────────────────────────────
+    # ── Mesa stages ─────────────job_search_prob─────────────────────────────────────
 
     def job_search_step(self):
         # ── Market-quit: probabilistic drain when below market wage ───

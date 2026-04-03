@@ -1,15 +1,10 @@
 #!/usr/bin/env python
-# demo/demo_multi.py
+# demo/demo_coop.py
 #
-# Interactive demo -- Multi-firm scenarios:
-#   Cooperative  (3 RL firms share reward, trained to collaborate)
-#   Competitive  (3 RL firms race each other, trained to dominate peers)
+# Interactive demo -- Cooperative: 3 RL firms share reward and are
+# trained to collaborate.  Reformed rules apply.
 #
-# Run with:  solara run demo/demo_multi.py
-# Mode slider: 0 = Cooperative   1 = Competitive
-#
-# Uses reformed rules:
-#   Market-quit, Options 3+4+5, snap action (7), equal_terms, firm replacement
+# Run with:  solara run demo/demo_coop.py
 
 import sys
 from pathlib import Path
@@ -28,7 +23,7 @@ from mesa.visualization import SolaraViz, Slider, make_plot_component
 from mesa.visualization.utils import update_counter
 import importlib.util
 
-# ── Load model modules ────────────────────────────────────────────────
+# ── Load model module ─────────────────────────────────────────────────
 def _load_mod(folder):
     spec = importlib.util.spec_from_file_location(
         f"model_rl_{folder}", ROOT / folder / "model_rl.py")
@@ -36,25 +31,16 @@ def _load_mod(folder):
     spec.loader.exec_module(mod)
     return mod
 
-_COOP_MOD = _load_mod("cooperative")
-_COMP_MOD = _load_mod("competitive")
+_MOD = _load_mod("cooperative")
 
-# ── Load policies ─────────────────────────────────────────────────────
+# ── Load policy ───────────────────────────────────────────────────────
 try:
     from sb3_contrib import MaskablePPO
-    _COOP_POLICY = MaskablePPO.load(str(ROOT / "cooperative" / "coop_model_longrun"))
-    print("[demo_multi] Cooperative policy loaded.")
+    _POLICY = MaskablePPO.load(str(ROOT / "cooperative" / "coop_model_longrun"))
+    print("[demo_coop] Cooperative policy loaded.")
 except Exception as _e:
-    _COOP_POLICY = None
-    print(f"[demo_multi] Could not load coop model: {_e}")
-
-try:
-    from sb3_contrib import MaskablePPO
-    _COMP_POLICY = MaskablePPO.load(str(ROOT / "competitive" / "comp_model_longrun"))
-    print("[demo_multi] Competitive policy loaded.")
-except Exception as _e:
-    _COMP_POLICY = None
-    print(f"[demo_multi] Could not load comp model: {_e}")
+    _POLICY = None
+    print(f"[demo_coop] Could not load coop model: {_e}")
 
 N_RL_FIRMS = 3
 
@@ -70,7 +56,6 @@ WARN    = "#ffab40"
 RL_COL  = "#4fc3f7"
 H_COL   = "#ffb74d"
 MAC_COL = "#ce93d8"
-AT_COL  = "#ef5350"
 
 RL_FIRM_COLORS = ["#4fc3f7", "#ef5350", "#66bb6a"]
 
@@ -82,43 +67,37 @@ ACT_COLORS = {
 ACT_NAMES = ["Hold", "Wage+300", "Wage+100", "Wage-100", "Wage-300",
              "Post Vac", "Fire", "Snap"]
 
-COOP_OBS_LABELS = [
+OBS_LABELS = [
     "profit_signal", "profit_change", "vmpl_gap", "wage_vs_mkt",
     "labor_ratio", "vacancy_ratio", "worker_change", "wage_clock",
     "prod_vs_mkt", "cap_vs_mkt", "survival_signal",
     "team_profit_signal", "at_risk_fraction",
 ]
-COMP_OBS_LABELS = [
-    "profit_signal", "profit_change", "vmpl_gap", "wage_vs_mkt",
-    "labor_ratio", "vacancy_ratio", "worker_change", "wage_clock",
-    "prod_vs_mkt", "cap_vs_mkt",
-    "profit_vs_peers", "wage_vs_peers", "at_risk_fraction",
-]
 
-DEFAULTS = dict(mode=0, n_workers=100, n_firms=10, output_price=100.0,
-                productivity_scale=1.0, alpha_param=65, min_wage_val=7700,
-                rental_rate_val=500, worker_search_prob_val=10,
-                market_quit_patience_val=4, market_quit_threshold_val=91,
-                max_vacancies_val=5, deficit_exit_months_val=24,
-                equal_terms_val=1)
+DEFAULTS = dict(
+    n_workers=100, n_firms=10, output_price=100.0,
+    productivity_scale=1.0, alpha_param=65, min_wage_val=7700,
+    rental_rate_val=500, worker_search_prob_val=10,
+    market_quit_patience_val=4, market_quit_threshold_val=91,
+    max_vacancies_val=5, deficit_exit_months_val=24,
+    equal_terms_val=1, seed_val=455,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Demo model factory
+# Demo model
 # ─────────────────────────────────────────────────────────────────────
 
-def _make_multi_model(mode, n_workers, n_firms, output_price, productivity_scale,
-                      alpha_param, min_wage_val, rental_rate_val, worker_search_prob_val,
-                      market_quit_patience_val, market_quit_threshold_val,
-                      max_vacancies_val, deficit_exit_months_val, equal_terms_val):
+def _make_model(n_workers, n_firms, output_price, productivity_scale,
+                alpha_param, min_wage_val, rental_rate_val, worker_search_prob_val,
+                market_quit_patience_val, market_quit_threshold_val,
+                max_vacancies_val, deficit_exit_months_val, equal_terms_val,
+                seed_val):
 
-    mod    = _COOP_MOD if mode == 0 else _COMP_MOD
-    policy = _COOP_POLICY if mode == 0 else _COMP_POLICY
-    Base   = mod.LaborMarketModel
-
-    alpha = float(alpha_param) / 100.0
-    rr    = float(rental_rate_val)
-    sp    = float(worker_search_prob_val) / 100.0
+    Base   = _MOD.LaborMarketModel
+    alpha  = float(alpha_param) / 100.0
+    rr     = float(rental_rate_val)
+    sp     = float(worker_search_prob_val) / 100.0
 
     class _DemoModel(Base):
         def __init__(self):
@@ -132,9 +111,9 @@ def _make_multi_model(mode, n_workers, n_firms, output_price, productivity_scale
                 market_quit_threshold=float(market_quit_threshold_val) / 100.0,
                 max_vacancies=int(max_vacancies_val),
                 deficit_exit_months=int(deficit_exit_months_val),
+                seed=int(seed_val),
             )
-            self._mode_label = "Cooperative" if mode == 0 else "Competitive"
-            self._mode       = mode
+            self._mode_label = "Cooperative"
 
             for f in self.firms:
                 f.output_price = float(output_price)
@@ -147,14 +126,12 @@ def _make_multi_model(mode, n_workers, n_firms, output_price, productivity_scale
                 if f.uid not in self.rl_firm_ids:
                     f.set_initial_wage(gamma=0.8)
 
-            self._policy   = policy
-            self.rl_firms  = self.firms[:N_RL_FIRMS]
-            self._step     = 0
-
-            self._prev_profit  = {f.uid: 0.0                    for f in self.rl_firms}
-            self._prev_workers = {f.uid: len(f.current_workers) for f in self.rl_firms}
-
-            self.actions_each = [[] for _ in range(N_RL_FIRMS)]
+            self._policy        = _POLICY
+            self.rl_firms       = self.firms[:N_RL_FIRMS]
+            self._step          = 0
+            self._prev_profit   = {f.uid: 0.0                    for f in self.rl_firms}
+            self._prev_workers  = {f.uid: len(f.current_workers) for f in self.rl_firms}
+            self.actions_each   = [[] for _ in range(N_RL_FIRMS)]
             self._last_obs_each = [np.zeros(13, dtype=np.float32) for _ in range(N_RL_FIRMS)]
 
             self.datacollector = DataCollector(model_reporters={
@@ -177,7 +154,7 @@ def _make_multi_model(mode, n_workers, n_firms, output_price, productivity_scale
                                                       np.min([f.monthly_wage for f in m.rl_firms])),
             })
 
-        def _obs_coop(self, idx):
+        def _obs(self, idx):
             firm  = self.rl_firms[idx]
             labor = len(firm.current_workers)
 
@@ -222,55 +199,6 @@ def _make_multi_model(mode, n_workers, n_firms, output_price, productivity_scale
             ], dtype=np.float32)
             return np.clip(obs, -1.5, 1.5)
 
-        def _obs_comp(self, idx):
-            firm  = self.rl_firms[idx]
-            labor = len(firm.current_workers)
-
-            profit_signal        = float(np.tanh(firm.profit / 5_000))
-            profit_change_signal = float(np.tanh(
-                (firm.profit - self._prev_profit[firm.uid]) / 2_000))
-
-            if labor > 0:
-                mpl      = firm.marginal_product_labor(firm.productivity, labor, firm.alpha)
-                vmpl     = mpl * firm.output_price
-                vmpl_gap = float(np.tanh((vmpl - firm.monthly_wage) / max(firm.monthly_wage, 1.0)))
-            else:
-                vmpl_gap = 1.0
-
-            all_wages   = [f.monthly_wage for f in self.firms]
-            market_wage = float(np.mean(all_wages))
-            wage_vs_mkt = float(np.tanh((firm.monthly_wage - market_wage) / max(market_wage, 1.0)))
-
-            labor_ratio   = labor / 40.0
-            vacancy_ratio = min(firm.vacancies, 5) / 5.0
-            worker_change = float(np.tanh((labor - self._prev_workers[firm.uid]) / 3.0))
-            wage_clock    = (self._step % 12) / 11.0
-
-            avg_prod    = float(np.mean([f.productivity for f in self.firms]))
-            avg_cap     = float(np.mean([f.capital      for f in self.firms]))
-            prod_vs_mkt = float(np.tanh((firm.productivity - avg_prod) / max(avg_prod, 1.0)))
-            cap_vs_mkt  = float(np.tanh((firm.capital      - avg_cap)  / max(avg_cap,  1.0)))
-
-            peers           = [f for f in self.rl_firms if f is not firm]
-            peer_avg_profit = float(np.mean([f.profit      for f in peers])) if peers else 0.0
-            peer_avg_wage   = float(np.mean([f.monthly_wage for f in peers])) if peers else firm.monthly_wage
-
-            profit_vs_peers = float(np.tanh((firm.profit - peer_avg_profit) / 5_000))
-            wage_vs_peers   = float(np.tanh(
-                (firm.monthly_wage - peer_avg_wage) / max(peer_avg_wage, 1.0)))
-
-            patience = self.market_quit_patience
-            at_risk  = sum(1 for w in firm.current_workers if w.months_below_mkt >= patience // 2)
-            at_risk_fraction = at_risk / max(labor, 1)
-
-            obs = np.array([
-                profit_signal, profit_change_signal, vmpl_gap, wage_vs_mkt,
-                labor_ratio, vacancy_ratio, worker_change, wage_clock,
-                prod_vs_mkt, cap_vs_mkt,
-                profit_vs_peers, wage_vs_peers, at_risk_fraction,
-            ], dtype=np.float32)
-            return np.clip(obs, -1.5, 1.5)
-
         def _action_mask(self):
             wage_ok = self._step % 12 == 0
             return np.array([True, wage_ok, wage_ok, wage_ok, wage_ok,
@@ -282,33 +210,27 @@ def _make_multi_model(mode, n_workers, n_firms, output_price, productivity_scale
                 self._prev_workers[f.uid] = len(f.current_workers)
 
             mask = self._action_mask()
-
             for idx, firm in enumerate(self.rl_firms):
                 if self._policy is not None:
-                    obs = self._obs_coop(idx) if self._mode == 0 else self._obs_comp(idx)
+                    obs = self._obs(idx)
                     act, _ = self._policy.predict(obs[np.newaxis], deterministic=True,
                                                   action_masks=mask[np.newaxis])
-                    firm.rl_action         = int(act[0])
+                    firm.rl_action           = int(act[0])
                     self._last_obs_each[idx] = obs
                 else:
                     firm.rl_action = 0
 
             super().step()
             self._step += 1
-
             for idx, firm in enumerate(self.rl_firms):
                 self.actions_each[idx].append(firm.rl_action)
-
             self.datacollector.collect(self)
 
     return _DemoModel()
 
 
-# ── Proxy (SolaraViz needs a class) ──────────────────────────────────
-
-class MultiDemoModelProxy:
+class CoopDemoProxy:
     def __init__(self,
-                 mode                      = DEFAULTS["mode"],
                  n_workers                 = DEFAULTS["n_workers"],
                  n_firms                   = DEFAULTS["n_firms"],
                  output_price              = DEFAULTS["output_price"],
@@ -321,10 +243,11 @@ class MultiDemoModelProxy:
                  market_quit_threshold_val = DEFAULTS["market_quit_threshold_val"],
                  max_vacancies_val         = DEFAULTS["max_vacancies_val"],
                  deficit_exit_months_val   = DEFAULTS["deficit_exit_months_val"],
-                 equal_terms_val           = DEFAULTS["equal_terms_val"]):
+                 equal_terms_val           = DEFAULTS["equal_terms_val"],
+                 seed_val                  = DEFAULTS["seed_val"]):
 
-        self._inner = _make_multi_model(
-            mode=int(mode), n_workers=n_workers, n_firms=n_firms,
+        self._inner = _make_model(
+            n_workers=n_workers, n_firms=n_firms,
             output_price=output_price, productivity_scale=productivity_scale,
             alpha_param=alpha_param, min_wage_val=min_wage_val,
             rental_rate_val=rental_rate_val,
@@ -334,6 +257,7 @@ class MultiDemoModelProxy:
             max_vacancies_val=max_vacancies_val,
             deficit_exit_months_val=deficit_exit_months_val,
             equal_terms_val=equal_terms_val,
+            seed_val=seed_val,
         )
         self.schedule = self._inner.schedule
 
@@ -368,12 +292,10 @@ def InfoBanner(model):
     employed = sum(1 for w in m.workers if w.employed)
     mkt_wage = float(np.mean([f.monthly_wage for f in active])) if active else 0
     solara.Info(
-        f"Mode: {m._mode_label}  |  Month {m._step}  |  "
-        f"Active firms: {len(active)}  |  "
+        f"Cooperative  |  Month {m._step}  |  Active firms: {len(active)}  |  "
         f"Employed: {employed}/{len(m.workers)}  |  "
         f"Market wage: {mkt_wage:,.0f} THB  |  "
-        f"Patience: {m.market_quit_patience}mo  "
-        f"Threshold: {m.market_quit_threshold:.0%}"
+        f"Patience: {m.market_quit_patience}mo  Threshold: {m.market_quit_threshold:.0%}"
     )
 
 
@@ -405,7 +327,7 @@ def Scorecard(model):
     ax.set_yticks(y); ax.set_yticklabels(labels, color=TEXT, fontsize=10)
     ax.set_xlim(-xlim, xlim)
     ax.axvspan(0, xlim, color=BETTER, alpha=0.05); ax.axvspan(-xlim, 0, color=WORSE, alpha=0.05)
-    ax.set_title(f"Cumulative RL Scorecard  [{m._mode_label}]  (month {m._step})",
+    ax.set_title(f"Cumulative RL Scorecard  [Cooperative]  (month {m._step})",
                  color="white", fontsize=10, fontweight="bold")
     ax.set_xlabel("RL avg vs Heuristic avg (%)", color=TEXT, fontsize=9)
     plt.tight_layout(pad=0.4); solara.FigureMatplotlib(fig); plt.close(fig)
@@ -424,37 +346,32 @@ def ProfitRank(model):
                "Workers": len(f.current_workers)}
               for i, f in enumerate(ranked)]
     rl_ranks = [r["Rank"] for r in rows if "[RL]" in r["Firm"]]
-    solara.Text(f"Profit Leaderboard  [{m._mode_label}]  |  RL ranks: {rl_ranks}  |  month {m._step}")
+    solara.Text(f"Profit Leaderboard  [Cooperative]  |  RL ranks: {rl_ranks}  |  month {m._step}")
     solara.DataFrame(pd.DataFrame(rows))
 
 
 @solara.component
 def RLObsPanels(model):
-    """One obs bar chart per RL firm, stacked vertically."""
     update_counter.get()
-    m      = model._inner
-    labels = COOP_OBS_LABELS if m._mode == 0 else COMP_OBS_LABELS
-
+    m = model._inner
     fig, axes = plt.subplots(N_RL_FIRMS, 1, figsize=(9, 3.5 * N_RL_FIRMS), facecolor=BG)
     if N_RL_FIRMS == 1: axes = [axes]
-
     for idx, ax in enumerate(axes):
         _ax(ax)
         obs    = m._last_obs_each[idx]
         colors = [BETTER if v > 0.05 else (WORSE if v < -0.05 else DIM) for v in obs]
-        y = np.arange(len(labels))
+        y = np.arange(len(OBS_LABELS))
         ax.barh(y, obs, color=colors, height=0.65, edgecolor=GRID, lw=0.4)
         ax.axvline(0, color=DIM, lw=1.2)
-        ax.set_yticks(y); ax.set_yticklabels(labels, fontsize=8, color=TEXT)
+        ax.set_yticks(y); ax.set_yticklabels(OBS_LABELS, fontsize=8, color=TEXT)
         ax.set_xlim(-1.6, 1.6)
         last_act = ACT_NAMES[m.actions_each[idx][-1]] if m.actions_each[idx] else "--"
-        ax.set_title(f"F{idx} [{m._mode_label}]  last action: {last_act}",
+        ax.set_title(f"F{idx} [Cooperative]  last action: {last_act}",
                      color=RL_FIRM_COLORS[idx], fontsize=9, fontweight="bold")
         for i, v in enumerate(obs):
             ha = "left" if v >= 0 else "right"
             ax.text(v+(0.04 if v>=0 else -0.04), i, f"{v:.2f}",
                     va="center", ha=ha, color=TEXT, fontsize=7)
-
     fig.suptitle(f"RL Policy Observations  (month {m._step})",
                  color="white", fontsize=11, fontweight="bold")
     plt.tight_layout(pad=0.4); solara.FigureMatplotlib(fig); plt.close(fig)
@@ -462,16 +379,13 @@ def RLObsPanels(model):
 
 @solara.component
 def ActionGrid(model):
-    """One action colour strip per RL firm."""
     update_counter.get()
     m = model._inner
     if not any(m.actions_each[0]): return
-
     fig, axes = plt.subplots(N_RL_FIRMS, 1, figsize=(11, 1.2*N_RL_FIRMS+0.8), facecolor=BG)
     if N_RL_FIRMS == 1: axes = [axes]
-    fig.suptitle(f"RL Firm Actions -- Last 72 months  [{m._mode_label}]",
+    fig.suptitle(f"RL Firm Actions -- Last 72 months  [Cooperative]",
                  color="white", fontsize=9, fontweight="bold", y=1.01)
-
     for idx, ax in enumerate(axes):
         ax.set_facecolor(PANEL)
         for sp in ax.spines.values(): sp.set_edgecolor(GRID)
@@ -482,7 +396,6 @@ def ActionGrid(model):
             ax.axvline(t, color=DIM, lw=0.7, linestyle=":")
         ax.set_xlim(0, len(last)); ax.set_ylim(0, 1); ax.set_yticks([])
         ax.set_ylabel(f"F{idx}", color=RL_FIRM_COLORS[idx], fontsize=8, rotation=0, labelpad=20)
-
     axes[-1].set_xlabel(f"Month offset (current: {m._step})", color=TEXT, fontsize=8)
     patches = [mpatches.Patch(color=ACT_COLORS[k], label=ACT_NAMES[k]) for k in range(8)]
     axes[-1].legend(handles=patches, ncol=8, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT,
@@ -492,14 +405,11 @@ def ActionGrid(model):
 
 @solara.component
 def ActionPieGrid(model):
-    """One action pie per RL firm."""
     update_counter.get()
     m = model._inner
     if not any(m.actions_each[0]): return
-
     fig, axes = plt.subplots(1, N_RL_FIRMS, figsize=(5*N_RL_FIRMS, 4.5), facecolor=BG)
     if N_RL_FIRMS == 1: axes = [axes]
-
     for idx, ax in enumerate(axes):
         ax.set_facecolor(BG)
         counts = np.zeros(8, dtype=int)
@@ -507,7 +417,7 @@ def ActionPieGrid(model):
         nonzero = [(c, k) for k, c in enumerate(counts) if c > 0]
         if not nonzero: continue
         vals   = [c for c, _ in nonzero]
-        labels = [f"{ACT_NAMES[k]}" for c, k in nonzero]
+        labels = [ACT_NAMES[k] for c, k in nonzero]
         colors = [ACT_COLORS[k] for _, k in nonzero]
         wedges, _ = ax.pie(vals, colors=colors, startangle=90,
                            wedgeprops=dict(edgecolor=BG, linewidth=1.5))
@@ -516,41 +426,36 @@ def ActionPieGrid(model):
                   fontsize=7, bbox_to_anchor=(0.5, -0.25))
         ax.set_title(f"F{idx}  ({len(m.actions_each[idx])} steps)",
                      color=RL_FIRM_COLORS[idx], fontsize=9, fontweight="bold")
-
-    fig.suptitle(f"Action Distribution [{m._mode_label}]",
+    fig.suptitle("Action Distribution [Cooperative]",
                  color="white", fontsize=11, fontweight="bold")
     plt.tight_layout(pad=0.3); solara.FigureMatplotlib(fig); plt.close(fig)
 
 
 @solara.component
 def RLWageSpreadChart(model):
-    """Time series showing wage spread among RL firms — cooperative should converge, competitive should diverge."""
+    """Individual profits + wage spread.  Cooperative firms should converge wages."""
     update_counter.get()
     m  = model._inner
     df = m.datacollector.get_model_vars_dataframe()
     if len(df) < 2: return
     steps = np.arange(1, len(df)+1)
-
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 4.5), facecolor=BG,
                                     gridspec_kw={"height_ratios":[2,1]})
     _ax(ax1); _ax(ax2)
-
     for idx in range(N_RL_FIRMS):
         col = f"RL F{idx} Profit"
         if col in df.columns:
             ax1.plot(steps, df[col], color=RL_FIRM_COLORS[idx], lw=1.8, label=f"F{idx}")
     ax1.plot(steps, df["Heuristic Profit"], color=H_COL, lw=1.5, linestyle="--", label="Heuristic avg")
     ax1.set_ylabel("Profit (THB)", fontsize=8)
-    ax1.set_title(f"Individual RL Firm Profits  [{m._mode_label}]",
+    ax1.set_title("Individual RL Firm Profits  [Cooperative]",
                   color="white", fontsize=10, fontweight="bold")
     ax1.legend(fontsize=8, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
-
     ax2.fill_between(steps, 0, df["Wage Spread (RL)"], color=WARN, alpha=0.5)
     ax2.plot(steps, df["Wage Spread (RL)"], color=WARN, lw=1.5)
     ax2.set_ylabel("RL Wage\nSpread (THB)", fontsize=8); ax2.set_xlabel("Month", fontsize=8)
-    ax2.set_title("Wage Spread Among RL Firms  (coop->low, comp->high)",
+    ax2.set_title("Wage Spread Among RL Firms  (should stay low in cooperative mode)",
                   color="white", fontsize=9)
-
     plt.tight_layout(pad=0.4); solara.FigureMatplotlib(fig); plt.close(fig)
 
 
@@ -602,7 +507,7 @@ def FirmTable(model):
                "Wage": round(f.monthly_wage, 0), "Capital": round(f.capital, 1),
                "Vacancies": f.vacancies, "Deficit Mo": f.deficit_months}
               for f in active]
-    solara.Text(f"All Firms -- {m._mode_label}  month {m._step}  |  Active: {len(active)}")
+    solara.Text(f"All Firms -- Cooperative  month {m._step}  |  Active: {len(active)}")
     solara.DataFrame(pd.DataFrame(rows))
 
 
@@ -631,7 +536,6 @@ chart_rl_firms   = make_plot_component({
     "RL F2 Profit": RL_FIRM_COLORS[2],
 })
 chart_workers    = make_plot_component({"RL Avg Workers": RL_COL, "Heuristic Workers": H_COL})
-chart_wage       = make_plot_component({"RL Avg Wage": RL_COL, "Heuristic Wage": H_COL, "Market Wage": MAC_COL})
 chart_employment = make_plot_component("Employment %")
 
 
@@ -640,8 +544,6 @@ chart_employment = make_plot_component("Employment %")
 # ─────────────────────────────────────────────────────────────────────
 
 model_params = {
-    # ── Mode ─────────────────────────────────────────────────────────
-    "mode":                       Slider("Mode  (0=Cooperative  1=Competitive)",       0,    0,    1,    1),
     # ── Market structure ─────────────────────────────────────────────
     "n_workers":                  Slider("Workers  (default 100)",                   100,   30,  300,   10),
     "n_firms":                    Slider("Firms  (default 10)",                       10,    3,   20,    1),
@@ -661,10 +563,11 @@ model_params = {
     "deficit_exit_months_val":    Slider("Exit After N Deficit Months  (default 24)", 24,    3,   72,    3),
     # ── Starting conditions ───────────────────────────────────────────
     "equal_terms_val":            Slider("Equal Terms  (1=narrow spread, 0=wide)",     1,    0,    1,    1),
+    "seed_val":                   Slider("Random Seed  (default 455)",               455,    0,  999,    1),
 }
 
 page = SolaraViz(
-    MultiDemoModelProxy(),
+    CoopDemoProxy(),
     components=[
         InfoBanner,
         Scorecard,
@@ -683,5 +586,5 @@ page = SolaraViz(
         WorkerTable,
     ],
     model_params=model_params,
-    name="RL Labor Market -- Multi-Firm Demo (Cooperative / Competitive)",
+    name="RL Labor Market -- Cooperative Demo",
 )

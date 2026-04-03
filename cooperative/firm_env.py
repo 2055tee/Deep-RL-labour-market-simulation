@@ -28,8 +28,11 @@ N_RL_FIRMS = 3
 
 class CoopFirmEnv(gym.Env):
 
-    def __init__(self):
-        self.model        = LaborMarketModel(n_rl_firms=N_RL_FIRMS, equal_terms=True)
+    def __init__(self, n_workers=100, n_firms=10):
+        self.n_workers    = n_workers
+        self.n_firms      = n_firms
+        self.model        = LaborMarketModel(N_workers=n_workers, N_firms=n_firms,
+                                             n_rl_firms=N_RL_FIRMS, equal_terms=True)
         self.rl_firms     = self.model.firms[:N_RL_FIRMS]
         self.current_idx  = 0
         self.current_step = 0
@@ -152,7 +155,8 @@ class CoopFirmEnv(gym.Env):
         _random.seed(env_seed)
         np.random.seed(env_seed)
 
-        self.model        = LaborMarketModel(n_rl_firms=N_RL_FIRMS,
+        self.model        = LaborMarketModel(N_workers=self.n_workers, N_firms=self.n_firms,
+                                             n_rl_firms=N_RL_FIRMS,
                                              use_wage_gap_prob=True,
                                              equal_terms=True,
                                              seed=env_seed)

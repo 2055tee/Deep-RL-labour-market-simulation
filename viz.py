@@ -140,7 +140,7 @@ def _run_coop_seed(seed):
     d = _load_scenario("cooperative")
     from sb3_contrib import MaskablePPO
     from firm_env import CoopFirmEnv
-    policy = MaskablePPO.load(str(d / "coop_model"))
+    policy = MaskablePPO.load(str(d / "coop_model_longrun"))
     env    = CoopFirmEnv()
     obs, _ = env.reset()
     rows   = []
@@ -160,7 +160,7 @@ def _run_comp_seed(seed):
     d = _load_scenario("competitive")
     from sb3_contrib import MaskablePPO
     from firm_env import CompFirmEnv
-    policy = MaskablePPO.load(str(d / "comp_model"))
+    policy = MaskablePPO.load(str(d / "comp_model_longrun"))
     env    = CompFirmEnv()
     obs, _ = env.reset()
     rows   = []
@@ -183,8 +183,8 @@ def run_multi_seed(scenario_key):
     """Run scenario across all SEEDS. Returns dict: metric -> {mean, std, seeds}."""
     runner_map = {
         "solo": ("solo",        "solo_model.zip",  _run_solo_seed),
-        "coop": ("cooperative", "coop_model.zip",  _run_coop_seed),
-        "comp": ("competitive", "comp_model.zip",  _run_comp_seed),
+        "coop": ("cooperative", "coop_model_longrun.zip",  _run_coop_seed),
+        "comp": ("competitive", "comp_model_longrun.zip",  _run_comp_seed),
     }
     folder, model_file, runner = runner_map[scenario_key]
     if not (ROOT / folder / model_file).exists():

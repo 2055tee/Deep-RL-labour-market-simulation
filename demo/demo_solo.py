@@ -65,7 +65,7 @@ OBS_LABELS = [
 
 DEFAULTS   = dict(output_price=100.0, productivity_scale=1.0, alpha_param=0.65,
                   min_wage_val=7700, n_workers=100, n_firms=10,
-                  rental_rate_val=500, worker_search_prob_val=10)
+                  rental_rate_val=500, worker_search_prob_val=10, seed_val=455)
 OOD_BOUNDS = dict(output_price=(70,150), productivity_scale=(0.7,1.5),
                   alpha_param=(0.50,0.80), min_wage_val=(5000,12000), n_workers=(60,160))
 OOD_LABELS = dict(output_price="Output Price", productivity_scale="Productivity Scale",
@@ -86,7 +86,11 @@ class SoloDemoModel(LaborMarketModel):
                  n_workers              = DEFAULTS["n_workers"],
                  n_firms                = DEFAULTS["n_firms"],
                  rental_rate_val        = DEFAULTS["rental_rate_val"],
-                 worker_search_prob_val = DEFAULTS["worker_search_prob_val"]):
+                 worker_search_prob_val = DEFAULTS["worker_search_prob_val"],
+                 seed_val               = DEFAULTS["seed_val"]):
+        import random as _random
+        _random.seed(int(seed_val))
+        np.random.seed(int(seed_val))
 
         super().__init__(N_workers=int(n_workers), N_firms=int(n_firms))
 
@@ -523,8 +527,9 @@ model_params = {
     "rental_rate_val":        Slider("Capital Rental Rate  (default 500)",  500,   50, 2000,   50),
     "alpha_param":            Slider("Labour Elasticity alpha (default 0.65)", 0.65, 0.20, 0.90, 0.05),
     # ── Labour market ─────────────────────────────────────────────────
-    "min_wage_val":           Slider("Min Wage THB  (default 7700)",       7700, 3000,20000,  500),
+    "min_wage_val":           Slider("Min Wage THB  (default 7700)",       7700, 3000,15000,  100),
     "worker_search_prob_val": Slider("Worker Search Prob %  (default 10)",   10,    1,   60,    1),
+    "seed_val":               Slider("Random Seed  (default 455)",          455,    0,  999,    1),
 }
 
 page = SolaraViz(
