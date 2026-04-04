@@ -184,7 +184,6 @@ class Firm(Agent):
         self.applicants = []
         self.current_workers = []
         self.pending_workers = []  # Workers hired but waiting 1 step before starting work
-        self.deficit_months = 0  # consecutive months of negative profit
 
     def set_initial_wage(self, gamma):
         # Set initial wage based on MPL
@@ -332,18 +331,6 @@ class Firm(Agent):
         print(f"Fired: Worker {worker.unique_id} from Firm {self.unique_id}")
         return True
 
-    def exit_and_release_workers(self):
-        """Release all workers when the firm exits the market."""
-        for w in list(self.current_workers):
-            w.employed = False
-            w.employer = None
-            w.monthly_wage = 0
-            w.daily_wage = 0
-        self.current_workers = []
-        self.pending_workers = []
-        self.vacancies = 0
-        self.applicants = []
-    
     def fire_for_profit(self):
         """Allow firing each step when it strictly raises profit."""
         baseline_profit = self.compute_profit()
@@ -472,16 +459,6 @@ class Firm(Agent):
         profit = revenue - total_wage_cost - capital_cost
         self.profit = profit
 
-        # Track consecutive deficits for exit decisions
-        if profit < 0:
-            self.deficit_months += 1
-        else:
-            self.deficit_months = 0
-
-        if self.deficit_months >= self.model.deficit_exit_months:
-            print(f"Firm {self.unique_id} flagged for exit after {self.deficit_months} deficit months.")
-            self.model.queue_firm_exit(self)
-
         # Adjust capital and wage every 12 steps but not in the first step to allow initial conditions to stabilize
         if self.model.step_count % 12 == 0 and self.model.step_count > 0:
             total_labor = len(self.current_workers)
@@ -524,11 +501,9 @@ class LaborMarketModel(Model):
 
         self.num_workers = N_workers
         self.num_firms = N_firms
-        self.deficit_exit_months = 24  # default: exit after 24 consecutive deficit months (2 years)
         self.MAX_HOURS = 8 * 6 * 4  # (192 hours) Max working hours per month (assumed 8 hours/day * 6 days/week * 4 weeks)
         self.min_wage = min_wage
         self.total_profit = 0  # TODO: Track total profit in the economy for analysis
-        self.pending_firm_exits = []
         
         # Create agents
         for i in range(self.num_workers):
@@ -624,46 +599,10 @@ class LaborMarketModel(Model):
         self.datacollector = mesa.DataCollector(model_reporters)
         self.datacollector.collect(self)
 
-    def queue_firm_exit(self, firm):
-        if firm not in self.pending_firm_exits:
-            self.pending_firm_exits.append(firm)
-
-    def create_new_firm(self):
-        firm_id = f"F{self.next_firm_id}"
-        self.next_firm_id += 1
-        f = Firm(firm_id, self, capital=random.uniform(10,100), rental_rate=500,
-                  productivity=random.uniform(0.8, 1.2), output_price=100)
-        self.schedule.add(f)
-        f.set_initial_wage(gamma=0.8)
-        self.firms.append(f)
-        print(f"Created replacement firm {firm_id} with initial wage {f.monthly_wage:.2f}")
-        return f
-
-    def process_firm_turnover(self):
-        if not self.pending_firm_exits:
-            return
-
-        exiting = list(self.pending_firm_exits)
-        self.pending_firm_exits = []
-
-        for firm in exiting:
-            if firm not in self.schedule.agents:
-                continue
-            firm.exit_and_release_workers()
-            self.schedule.remove(firm)
-            if firm in self.firms:
-                self.firms.remove(firm)
-            print(f"Firm {firm.unique_id} exited after sustained deficits.")
-
-        # Replace exited firms one-for-one to keep market size stable
-        for _ in exiting:
-            self.create_new_firm()
-    
     def step(self):
         # increase min wage over time   
         # print(f"min_wage increased to {self.min_wage} at step {self.step_count}")
         self.schedule.step()
-        self.process_firm_turnover()
         self.datacollector.collect(self)
         self.update_data()
         self.step_count += 1
