@@ -22,6 +22,7 @@
 
 import sys
 import random
+import pickle
 import numpy as np
 
 # Force UTF-8 stdout so special characters don't crash on Windows cp874
@@ -84,7 +85,6 @@ AI_COL = {
     "solo":        "#4fc3f7",   # blue
     "cooperative": "#66bb6a",   # green
     "competitive": "#ef5350",   # red
-    "reformed":    "#ffd54f",   # yellow
 }
 H_COL   = "#ffb74d"   # rule-based / heuristic — orange
 MKT_COL = "#ce93d8"   # market average — purple
@@ -297,10 +297,7 @@ def _run_scenario(scenario_key, model_file, env_class_name, is_multi, size_kwarg
 
 
 def run_solo():
-    return _run_scenario("solo", "solo_model.zip", "LaborMarketEnv", is_multi=False)
-
-
-def run_reformed():
+    # Uses the reformed model and environment (stronger rules, snap action, market-quit)
     return _run_scenario("reformed", "reformed_model.zip", "ReformedFirmEnv",
                          is_multi=False, size_kwargs="upper")
 
@@ -616,23 +613,19 @@ if __name__ == "__main__":
     print(f"  {N_SEEDS} seeds  x  {N_STEPS} months  x  {len(CONFIGS)} market sizes")
     print(f"{'='*68}\n")
 
-    print("[1/4] Solo  (1 AI firm vs rule-based firms)")
+    print("[1/3] Solo  (1 AI firm, reformed rules: market-quit + snap wage)")
     solo_res = run_solo()
 
-    print("\n[2/4] Reformed  (1 AI firm, enhanced rules: market-quit + snap wage)")
-    reformed_res = run_reformed()
-
-    print("\n[3/4] Cooperative  (3 AI firms working as a team)")
+    print("\n[2/3] Cooperative  (3 AI firms working as a team)")
     coop_res = run_cooperative()
 
-    print("\n[4/4] Competitive  (3 AI firms competing against each other)")
+    print("\n[3/3] Competitive  (3 AI firms competing against each other)")
     comp_res = run_competitive()
 
     SCENARIOS = [
-        ("solo",        "Solo",        solo_res,     AI_COL["solo"]),
-        ("reformed",    "Reformed",    reformed_res, AI_COL["reformed"]),
-        ("cooperative", "Cooperative", coop_res,     AI_COL["cooperative"]),
-        ("competitive", "Competitive", comp_res,     AI_COL["competitive"]),
+        ("solo",        "Solo",        solo_res, AI_COL["solo"]),
+        ("cooperative", "Cooperative", coop_res, AI_COL["cooperative"]),
+        ("competitive", "Competitive", comp_res, AI_COL["competitive"]),
     ]
 
     print(f"\n{'='*68}")
@@ -696,3 +689,9 @@ if __name__ == "__main__":
 
     print(f"\n{'='*80}")
     print(f"\n  Charts saved to:  benchmark/\n")
+
+    # Save results cache so benchmark_heuristic.py can load RL data for comparison
+    cache_path = BENCH / ".rl_cache.pkl"
+    with open(cache_path, "wb") as _f:
+        pickle.dump(all_results, _f)
+    print(f"  RL results cached to: {cache_path.name}\n")
