@@ -604,6 +604,243 @@ def chart_scorecard(results, outdir, scenario_name, ai_color):
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Chart: Workers Overview  (cross-scenario comparison → benchmark/comparison/)
+# ─────────────────────────────────────────────────────────────────────
+
+def chart_comparison_profit(all_results, outdir):
+    """
+    Cross-scenario comparison: monthly profit for all AI models + rule-based baseline.
+    Saved to benchmark/comparison/profit_overview.png
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(17, 5.5), facecolor=BG)
+    x = np.arange(1, N_STEPS + 1)
+
+    SCENARIO_ORDER = [
+        ("solo",        "Solo AI"),
+        ("cooperative", "Cooperative AI"),
+        ("competitive", "Competitive AI"),
+    ]
+
+    for ax, cfg in zip(axes, CONFIGS):
+        tag = cfg["tag"]
+        _ax(ax)
+
+        for key, label in SCENARIO_ORDER:
+            if key not in all_results or tag not in all_results[key]:
+                continue
+            mean, std, _ = all_results[key][tag]
+            _band(ax, x, mean["rl_profit"], std["rl_profit"], AI_COL[key], label, lw=2.0)
+
+        for key, _ in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                mean, std, _ = all_results[key][tag]
+                _band(ax, x, mean["h_profit"], std["h_profit"],
+                      H_COL, "Rule-Based", lw=1.6, ls="--", alpha=0.12)
+                break
+
+        ax.axhline(0, color=DIM, lw=0.8, ls="--", alpha=0.5)
+        ax.set_title(f"{cfg['label']}\n{cfg['subtitle']}", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Month", fontsize=9)
+        if ax is axes[0]:
+            ax.set_ylabel("Monthly Profit (THB)", fontsize=9)
+        ax.legend(fontsize=8.5, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
+
+        lines = []
+        for key, label in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                avg = all_results[key][tag][2]["rl_profit"]["mean"]
+                lines.append(f"{label.split()[0]}: {avg:,.0f} THB")
+        for key, _ in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                h_avg = all_results[key][tag][2]["h_profit"]["mean"]
+                lines.append(f"Rule-Based: {h_avg:,.0f} THB")
+                break
+        if lines:
+            _note(ax, "\n".join(lines), color=TEXT)
+
+    fig.suptitle(
+        "ALL MODELS  ·  Monthly Profit Comparison\n"
+        f"Solo vs Cooperative vs Competitive AI vs Rule-Based  —  "
+        f"mean ± 1 std across {N_SEEDS} simulations",
+        color=WHITE, fontsize=13, fontweight="bold", y=1.02)
+    plt.tight_layout(pad=1.2)
+    _save(fig, outdir, "profit_overview.png")
+
+
+def chart_comparison_employment(all_results, outdir):
+    """
+    Cross-scenario comparison: market employment rate across all AI models.
+    Saved to benchmark/comparison/employment_overview.png
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(17, 5.5), facecolor=BG)
+    x = np.arange(1, N_STEPS + 1)
+
+    SCENARIO_ORDER = [
+        ("solo",        "Solo AI"),
+        ("cooperative", "Cooperative AI"),
+        ("competitive", "Competitive AI"),
+    ]
+
+    for ax, cfg in zip(axes, CONFIGS):
+        tag = cfg["tag"]
+        _ax(ax)
+
+        for key, label in SCENARIO_ORDER:
+            if key not in all_results or tag not in all_results[key]:
+                continue
+            mean, std, _ = all_results[key][tag]
+            _band(ax, x, mean["employ_pct"], std["employ_pct"], AI_COL[key], label, lw=2.0)
+
+        ax.set_ylim(0, 105)
+        ax.axhline(100, color=DIM, lw=0.8, ls="--", alpha=0.4)
+        ax.set_title(f"{cfg['label']}\n{cfg['subtitle']}", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Month", fontsize=9)
+        if ax is axes[0]:
+            ax.set_ylabel("Workers Employed (%)", fontsize=9)
+        ax.legend(fontsize=8.5, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
+
+        lines = []
+        for key, label in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                avg = all_results[key][tag][2]["employ_pct"]["mean"]
+                lines.append(f"{label.split()[0]}: {avg:.1f}%")
+        if lines:
+            _note(ax, "\n".join(lines), color=TEXT)
+
+    fig.suptitle(
+        "ALL MODELS  ·  Market Employment Rate\n"
+        f"Percentage of workers with jobs across all model types  —  "
+        f"mean ± 1 std across {N_SEEDS} simulations",
+        color=WHITE, fontsize=13, fontweight="bold", y=1.02)
+    plt.tight_layout(pad=1.2)
+    _save(fig, outdir, "employment_overview.png")
+
+
+def chart_comparison_wages(all_results, outdir):
+    """
+    Cross-scenario comparison: AI firm wages vs rule-based vs market average.
+    Saved to benchmark/comparison/wages_overview.png
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(17, 5.5), facecolor=BG)
+    x = np.arange(1, N_STEPS + 1)
+
+    SCENARIO_ORDER = [
+        ("solo",        "Solo AI"),
+        ("cooperative", "Cooperative AI"),
+        ("competitive", "Competitive AI"),
+    ]
+
+    for ax, cfg in zip(axes, CONFIGS):
+        tag = cfg["tag"]
+        _ax(ax)
+
+        for key, label in SCENARIO_ORDER:
+            if key not in all_results or tag not in all_results[key]:
+                continue
+            mean, std, _ = all_results[key][tag]
+            _band(ax, x, mean["rl_wage"], std["rl_wage"], AI_COL[key], label, lw=2.0)
+
+        for key, _ in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                mean, std, _ = all_results[key][tag]
+                _band(ax, x, mean["h_wage"], std["h_wage"],
+                      H_COL, "Rule-Based", lw=1.6, ls="--", alpha=0.12)
+                _band(ax, x, mean["mkt_wage"], std["mkt_wage"],
+                      MKT_COL, "Market Average", lw=1.2, alpha=0.08)
+                break
+
+        ax.set_title(f"{cfg['label']}\n{cfg['subtitle']}", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Month", fontsize=9)
+        if ax is axes[0]:
+            ax.set_ylabel("Monthly Wage (THB)", fontsize=9)
+        ax.legend(fontsize=8.5, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
+
+        lines = []
+        for key, label in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                avg = all_results[key][tag][2]["rl_wage"]["mean"]
+                lines.append(f"{label.split()[0]}: {avg:,.0f} THB")
+        for key, _ in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                h_avg = all_results[key][tag][2]["h_wage"]["mean"]
+                lines.append(f"Rule-Based: {h_avg:,.0f} THB")
+                break
+        if lines:
+            _note(ax, "\n".join(lines), color=TEXT)
+
+    fig.suptitle(
+        "ALL MODELS  ·  Monthly Wages Paid to Workers\n"
+        f"Solo vs Cooperative vs Competitive AI vs Rule-Based  —  "
+        f"mean ± 1 std across {N_SEEDS} simulations",
+        color=WHITE, fontsize=13, fontweight="bold", y=1.02)
+    plt.tight_layout(pad=1.2)
+    _save(fig, outdir, "wages_overview.png")
+
+
+def chart_comparison_workers(all_results, outdir):
+    """
+    Compare average employees per firm across all AI scenarios and rule-based,
+    one panel per market size.  Saved to benchmark/comparison/workers_overview.png
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(17, 5.5), facecolor=BG)
+    x = np.arange(1, N_STEPS + 1)
+
+    SCENARIO_ORDER = [
+        ("solo",        "Solo AI"),
+        ("cooperative", "Cooperative AI"),
+        ("competitive", "Competitive AI"),
+    ]
+
+    for ax, cfg in zip(axes, CONFIGS):
+        tag = cfg["tag"]
+        _ax(ax)
+
+        # Draw each AI scenario
+        for key, label in SCENARIO_ORDER:
+            if key not in all_results or tag not in all_results[key]:
+                continue
+            mean, std, _ = all_results[key][tag]
+            _band(ax, x, mean["rl_workers"], std["rl_workers"],
+                  AI_COL[key], label, lw=2.0)
+
+        # Draw rule-based baseline (same heuristic firms — use first available scenario)
+        for key, _ in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                mean, std, _ = all_results[key][tag]
+                _band(ax, x, mean["h_workers"], std["h_workers"],
+                      H_COL, "Rule-Based", lw=1.6, ls="--", alpha=0.12)
+                break
+
+        ax.set_title(f"{cfg['label']}\n{cfg['subtitle']}", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Month", fontsize=9)
+        if ax is axes[0]:
+            ax.set_ylabel("Avg Employees per Firm", fontsize=9)
+        ax.legend(fontsize=8.5, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
+
+        # Summary note: avg workers per scenario
+        lines = []
+        for key, label in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                avg = all_results[key][tag][2]["rl_workers"]["mean"]
+                lines.append(f"{label.split()[0]}: {avg:.1f} workers")
+        for key, _ in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                h_avg = all_results[key][tag][2]["h_workers"]["mean"]
+                lines.append(f"Rule-Based: {h_avg:.1f} workers")
+                break
+        if lines:
+            _note(ax, "\n".join(lines), color=TEXT)
+
+    fig.suptitle(
+        "ALL MODELS  ·  Workforce Size: Average Employees per Firm\n"
+        f"Solo vs Cooperative vs Competitive AI vs Rule-Based  —  "
+        f"mean ± 1 std across {N_SEEDS} simulations",
+        color=WHITE, fontsize=13, fontweight="bold", y=1.02)
+    plt.tight_layout(pad=1.2)
+    _save(fig, outdir, "workers_overview.png")
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────
 
@@ -646,12 +883,20 @@ if __name__ == "__main__":
         if key in ("cooperative", "competitive"):
             chart_wage_spread(res, outdir, name, color, mode=key)
 
+    all_results = {k: r for k, _, r, _ in SCENARIOS if r is not None}
+
+    # ── Cross-scenario comparison charts ────────────────────────────
+    comparison_dir = BENCH / "comparison"
+    print(f"\n  Cross-scenario comparison (benchmark/comparison/):")
+    chart_comparison_profit(all_results, comparison_dir)
+    chart_comparison_employment(all_results, comparison_dir)
+    chart_comparison_wages(all_results, comparison_dir)
+    chart_comparison_workers(all_results, comparison_dir)
+
     # ── Text summary table ───────────────────────────────────────────
     print(f"\n{'='*80}")
     print(f"  {'SUMMARY TABLE':^76}")
     print(f"{'='*80}")
-
-    all_results = {k: r for k, _, r, _ in SCENARIOS if r is not None}
     cfg_tags    = [c["tag"] for c in CONFIGS]
     cfg_short   = {"small": "Small", "medium": "Medium", "large": "Large"}
 
