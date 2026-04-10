@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # demo/demo_solo.py
 #
-# Interactive demo -- Solo: 1 RL firm vs 9 heuristic firms (original solo model).
+# Interactive demo -- Solo: 1 RL firm vs 9 heuristic firms (reformed model).
 # Run with:  solara run demo/demo_solo.py
 #
 # Training defaults: output_price=100, productivity_scale=1.0,
@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.resolve()
-sys.path.insert(0, str(ROOT / "solo"))
+sys.path.insert(0, str(ROOT / "reformed"))
 
 import numpy as np
 import matplotlib
@@ -26,13 +26,13 @@ from mesa.visualization.utils import update_counter
 
 try:
     from sb3_contrib import MaskablePPO
-    _POLICY = MaskablePPO.load(str(ROOT / "solo" / "solo_model"))
+    _POLICY = MaskablePPO.load(str(ROOT / "reformed" / "reformed_model"))
     print("[demo_solo] Policy loaded.")
 except Exception as _e:
     _POLICY = None
-    print(f"[demo_solo] Could not load solo model: {_e}")
+    print(f"[demo_solo] Could not load reformed model: {_e}")
 
-from model_rl import LaborMarketModel
+from model import LaborMarketModel
 
 # ── Palette (light theme) ──────────────────────────────────────────────
 BG      = "white"
@@ -50,14 +50,15 @@ AT_COL  = "#b71c1c"
 
 ACT_COLORS = {
     0: "#9e9e9e", 1: "#1565c0", 2: "#42a5f5",
-    3: "#ef6c00", 4: "#c62828", 5: "#2e7d32", 6: "#6a1b9a",
+    3: "#ef6c00", 4: "#c62828", 5: "#2e7d32", 6: "#6a1b9a", 7: "#00695c",
 }
-ACT_NAMES = ["Hold", "Wage+300", "Wage+100", "Wage-100", "Wage-300", "Post Vac", "Fire"]
+ACT_NAMES = ["Hold", "Wage+300", "Wage+100", "Wage-100", "Wage-300", "Post Vac", "Fire", "Snap to Mkt"]
 
 OBS_LABELS = [
     "profit_signal", "profit_change", "vmpl_gap", "wage_vs_mkt",
     "labor_ratio", "vacancy_ratio", "worker_change", "wage_clock",
     "prod_vs_mkt", "cap_vs_mkt", "survival_signal", "mkt_employment",
+    "at_risk_fraction",
 ]
 
 DEFAULTS   = dict(output_price=100.0, productivity_scale=1.0, alpha_param=0.65,
@@ -85,17 +86,19 @@ class SoloDemoModel(LaborMarketModel):
                  rental_rate_val        = DEFAULTS["rental_rate_val"],
                  worker_search_prob_val = DEFAULTS["worker_search_prob_val"],
                  seed_val               = DEFAULTS["seed_val"]):
-        import random as _random
-        _random.seed(int(seed_val))
-        np.random.seed(int(seed_val))
-
-        super().__init__(N_workers=int(n_workers), N_firms=int(n_firms))
+        super().__init__(
+            N_workers=int(n_workers),
+            N_firms=int(n_firms),
+            use_wage_gap_prob=True,
+            rl_firm_id="F0",
+            min_wage=int(min_wage_val),
+            seed=int(seed_val),
+        )
 
         self.params = dict(output_price=output_price, productivity_scale=productivity_scale,
                            alpha_param=alpha_param, min_wage_val=int(min_wage_val),
                            n_workers=int(n_workers))
 
-        self.min_wage = int(min_wage_val)
         rr = float(rental_rate_val)
         sp = float(worker_search_prob_val) / 100.0
 
@@ -109,13 +112,24 @@ class SoloDemoModel(LaborMarketModel):
         for f in self.firms:
             f.set_initial_wage(gamma=0.8)
 
+        # Re-apply RL firm market-mean wage initialisation (as reformed model does)
+        rl_firm = next(f for f in self.firms if f.uid == "F0")
+        others  = [f.monthly_wage for f in self.firms if f is not rl_firm]
+        mkt_mean = int(round(float(np.mean(others)) / 100.0) * 100) if others else int(min_wage_val)
+        rl_firm.fixed_wage_floor = int(min_wage_val)
+        rl_firm.monthly_wage     = max(mkt_mean, int(min_wage_val))
+        rl_firm.daily_wage       = rl_firm.monthly_wage / 20
+        for ww in rl_firm.current_workers:
+            ww.monthly_wage = rl_firm.monthly_wage
+            ww.daily_wage   = rl_firm.daily_wage
+
         self._policy       = _POLICY
-        self.rl_firm       = self.firms[0]
+        self.rl_firm       = rl_firm
         self._step         = 0
         self._prev_profit  = 0.0
         self._prev_workers = len(self.rl_firm.current_workers)
         self.actions       = []
-        self._last_obs     = np.zeros(12, dtype=np.float32)
+        self._last_obs     = np.zeros(13, dtype=np.float32)
 
         self.datacollector = DataCollector(model_reporters={
             "RL Profit":         lambda m: m.rl_firm.profit,
@@ -136,8 +150,8 @@ class SoloDemoModel(LaborMarketModel):
         firm  = self.rl_firm
         labor = len(firm.current_workers)
 
-        profit_signal        = float(np.tanh(firm.profit / 20_000))
-        profit_change_signal = float(np.tanh((firm.profit - self._prev_profit) / 5_000))
+        profit_signal        = float(np.tanh(firm.profit / 5_000))
+        profit_change_signal = float(np.tanh((firm.profit - self._prev_profit) / 2_000))
 
         if labor > 0:
             mpl      = firm.marginal_product_labor(firm.productivity, labor, firm.alpha)
@@ -160,20 +174,26 @@ class SoloDemoModel(LaborMarketModel):
         prod_vs_mkt = float(np.tanh((firm.productivity - avg_prod) / max(avg_prod, 1.0)))
         cap_vs_mkt  = float(np.tanh((firm.capital      - avg_cap)  / max(avg_cap,  1.0)))
 
-        survival_signal = float(np.tanh(getattr(firm, "deficit_months", 0) / 12.0))
+        survival_signal = float(np.tanh(firm.deficit_months / 12.0))
         employed        = sum(1 for w in self.workers if w.employed)
         mkt_employment  = employed / len(self.workers) if self.workers else 0.0
+
+        patience         = self.market_quit_patience
+        at_risk          = sum(1 for w in firm.current_workers if w.months_below_mkt >= patience // 2)
+        at_risk_fraction = at_risk / max(labor, 1)
 
         obs = np.array([
             profit_signal, profit_change_signal, vmpl_gap, wage_vs_mkt,
             labor_ratio, vacancy_ratio, worker_change, wage_clock,
             prod_vs_mkt, cap_vs_mkt, survival_signal, mkt_employment,
+            at_risk_fraction,
         ], dtype=np.float32)
         return np.clip(obs, -1.5, 1.5)
 
     def _action_mask(self):
         wage_ok = self._step % 12 == 0
-        return np.array([True, wage_ok, wage_ok, wage_ok, wage_ok, True, True], dtype=bool)
+        # action 7 (snap_to_market) available every step, same as post_vacancy/fire
+        return np.array([True, wage_ok, wage_ok, wage_ok, wage_ok, True, True, True], dtype=bool)
 
     def step(self):
         self._prev_profit  = self.rl_firm.profit
@@ -287,7 +307,7 @@ def ActionBar(model):
     ax.set_xlabel(f"Last {len(last)} months  (month {model._step})", color=TEXT, fontsize=8)
     ax.set_title("RL Firm -- Recent Actions  (dotted = annual wage window)",
                  color=TEXT, fontsize=9, fontweight="bold", pad=4)
-    patches = [mpatches.Patch(color=ACT_COLORS[k], label=ACT_NAMES[k]) for k in range(7)]
+    patches = [mpatches.Patch(color=ACT_COLORS[k], label=ACT_NAMES[k]) for k in range(8)]
     ax.legend(handles=patches, ncol=7, facecolor=BG, edgecolor=GRID, labelcolor=TEXT,
               fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.6))
     plt.tight_layout(pad=0.3)
@@ -300,7 +320,7 @@ def ActionPieChart(model):
     update_counter.get()
     if not model.actions:
         return
-    counts = np.zeros(7, dtype=int)
+    counts = np.zeros(8, dtype=int)
     for a in model.actions:
         counts[a] += 1
     nonzero = [(c, k) for k, c in enumerate(counts) if c > 0]
