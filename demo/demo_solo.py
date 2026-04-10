@@ -4,9 +4,6 @@
 # Interactive demo -- Solo: 1 RL firm vs 9 heuristic firms (original solo model).
 # Run with:  solara run demo/demo_solo.py
 #
-# ⭐ = slider critically affects RL performance (model trained on fixed values).
-#     Parameters far outside the training range produce a warning banner.
-#
 # Training defaults: output_price=100, productivity_scale=1.0,
 #                    alpha=0.65, min_wage=7700, workers=100
 
@@ -37,23 +34,23 @@ except Exception as _e:
 
 from model_rl import LaborMarketModel
 
-# ── Palette ───────────────────────────────────────────────────────────
-BG      = "#0f0f1a"
-PANEL   = "#16213e"
-GRID    = "#1e2a4a"
-TEXT    = "#d0d0e8"
-DIM     = "#888899"
-BETTER  = "#00c853"
-WORSE   = "#ff1744"
-WARN    = "#ffab40"
-RL_COL  = "#4fc3f7"
-H_COL   = "#ffb74d"
-MAC_COL = "#ce93d8"
-AT_COL  = "#ef5350"
+# ── Palette (light theme) ──────────────────────────────────────────────
+BG      = "white"
+PANEL   = "#f5f5f5"
+GRID    = "#cccccc"
+TEXT    = "black"
+DIM     = "#666666"
+BETTER  = "#2e7d32"
+WORSE   = "#c62828"
+WARN    = "#e65100"
+RL_COL  = "#1565c0"
+H_COL   = "#e65100"
+MAC_COL = "#6a1b9a"
+AT_COL  = "#b71c1c"
 
 ACT_COLORS = {
-    0: "#555577", 1: "#1565c0", 2: "#64b5f6",
-    3: "#ffa726", 4: "#e53935", 5: "#43a047", 6: "#8e24aa",
+    0: "#9e9e9e", 1: "#1565c0", 2: "#42a5f5",
+    3: "#ef6c00", 4: "#c62828", 5: "#2e7d32", 6: "#6a1b9a",
 }
 ACT_NAMES = ["Hold", "Wage+300", "Wage+100", "Wage-100", "Wage-300", "Post Vac", "Fire"]
 
@@ -205,9 +202,12 @@ class SoloDemoModel(LaborMarketModel):
 def _ax(ax):
     ax.set_facecolor(PANEL)
     ax.tick_params(colors=TEXT, labelsize=9)
-    for sp in ax.spines.values(): sp.set_edgecolor(GRID)
-    ax.xaxis.label.set_color(TEXT); ax.yaxis.label.set_color(TEXT)
-    ax.title.set_color("white"); ax.grid(color=GRID, alpha=0.28, lw=0.5)
+    for sp in ax.spines.values():
+        sp.set_edgecolor(GRID)
+    ax.xaxis.label.set_color(TEXT)
+    ax.yaxis.label.set_color(TEXT)
+    ax.title.set_color(TEXT)
+    ax.grid(color=GRID, alpha=0.6, lw=0.5)
 
 def _ood_msgs(params):
     msgs = []
@@ -256,13 +256,14 @@ def RLObsPanel(model):
     ax.set_xlabel("Observation value (clipped to +/-1.5)", fontsize=8, color=TEXT)
     act_name = ACT_NAMES[model.rl_action] if model.actions else "—"
     ax.set_title(f"RL Policy Observation  |  last action: {act_name}  (month {model._step})",
-                 fontsize=10, fontweight="bold", color="white")
+                 fontsize=10, fontweight="bold", color=TEXT)
     for i, v in enumerate(obs):
         ha = "left" if v >= 0 else "right"
         ax.text(v + (0.04 if v >= 0 else -0.04), i, f"{v:.2f}",
                 va="center", ha=ha, color=TEXT, fontsize=7.5)
     plt.tight_layout(pad=0.4)
-    solara.FigureMatplotlib(fig); plt.close(fig)
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
 
 
 @solara.component
@@ -274,30 +275,37 @@ def ActionBar(model):
         return
     fig, ax = plt.subplots(figsize=(11, 1.6), facecolor=BG)
     ax.set_facecolor(PANEL)
-    for sp in ax.spines.values(): sp.set_edgecolor(GRID)
+    for sp in ax.spines.values():
+        sp.set_edgecolor(GRID)
     for i, act in enumerate(last):
         ax.bar(i, 1, color=ACT_COLORS[act], width=1.0, align="edge")
     for t in range(0, len(last), 12):
         ax.axvline(t, color=DIM, lw=0.7, linestyle=":")
-    ax.set_xlim(0, len(last)); ax.set_ylim(0, 1); ax.set_yticks([])
+    ax.set_xlim(0, len(last))
+    ax.set_ylim(0, 1)
+    ax.set_yticks([])
     ax.set_xlabel(f"Last {len(last)} months  (month {model._step})", color=TEXT, fontsize=8)
     ax.set_title("RL Firm -- Recent Actions  (dotted = annual wage window)",
-                 color="white", fontsize=9, fontweight="bold", pad=4)
+                 color=TEXT, fontsize=9, fontweight="bold", pad=4)
     patches = [mpatches.Patch(color=ACT_COLORS[k], label=ACT_NAMES[k]) for k in range(7)]
-    ax.legend(handles=patches, ncol=7, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT,
+    ax.legend(handles=patches, ncol=7, facecolor=BG, edgecolor=GRID, labelcolor=TEXT,
               fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.6))
     plt.tight_layout(pad=0.3)
-    solara.FigureMatplotlib(fig); plt.close(fig)
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
 
 
 @solara.component
 def ActionPieChart(model):
     update_counter.get()
-    if not model.actions: return
+    if not model.actions:
+        return
     counts = np.zeros(7, dtype=int)
-    for a in model.actions: counts[a] += 1
+    for a in model.actions:
+        counts[a] += 1
     nonzero = [(c, k) for k, c in enumerate(counts) if c > 0]
-    if not nonzero: return
+    if not nonzero:
+        return
     vals   = [c for c, _ in nonzero]
     labels = [f"{ACT_NAMES[k]} ({c})" for c, k in nonzero]
     colors = [ACT_COLORS[k] for _, k in nonzero]
@@ -306,12 +314,13 @@ def ActionPieChart(model):
     wedges, _ = ax.pie(vals, colors=colors, startangle=90,
                        wedgeprops=dict(edgecolor=BG, linewidth=1.5))
     ax.legend(wedges, labels, loc="lower center", ncol=2,
-              facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT, fontsize=8,
+              facecolor=BG, edgecolor=GRID, labelcolor=TEXT, fontsize=8,
               bbox_to_anchor=(0.5, -0.18))
     ax.set_title(f"Action Distribution  ({len(model.actions)} steps)",
-                 color="white", fontsize=10, fontweight="bold")
+                 color=TEXT, fontsize=10, fontweight="bold")
     plt.tight_layout(pad=0.3)
-    solara.FigureMatplotlib(fig); plt.close(fig)
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
 
 
 @solara.component
@@ -334,34 +343,40 @@ def ProfitRank(model):
 def WageBandChart(model):
     update_counter.get()
     df = model.datacollector.get_model_vars_dataframe()
-    if len(df) < 2: return
+    if len(df) < 2:
+        return
     steps = np.arange(1, len(df)+1)
     fig, ax = plt.subplots(figsize=(9, 3.2), facecolor=BG)
     _ax(ax)
     ax.fill_between(steps, df["Wage Min"], df["Wage Max"], color=H_COL, alpha=0.15, label="Market wage band")
     ax.plot(steps, df["Market Wage"], color=H_COL, lw=1.8, label="Market mean", linestyle="--")
     ax.plot(steps, df["RL Wage"],     color=RL_COL, lw=2.2, label="RL firm wage")
-    ax.set_xlabel("Month", fontsize=8); ax.set_ylabel("Wage (THB)", fontsize=8)
+    ax.set_xlabel("Month", fontsize=8)
+    ax.set_ylabel("Wage (THB)", fontsize=8)
     ax.set_title("RL Wage vs Market Band  (fill = min-max range)",
-                 color="white", fontsize=10, fontweight="bold")
-    ax.legend(fontsize=8, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
+                 color=TEXT, fontsize=10, fontweight="bold")
+    ax.legend(fontsize=8, facecolor=BG, edgecolor=GRID, labelcolor=TEXT)
     plt.tight_layout(pad=0.4)
-    solara.FigureMatplotlib(fig); plt.close(fig)
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
 
 
 @solara.component
 def Scorecard(model):
     update_counter.get()
     df = model.datacollector.get_model_vars_dataframe()
-    if df.empty: return
-    metrics = {"Profit":("RL Profit","Heuristic Profit"),
-               "Workers":("RL Workers","Heuristic Workers"),
-               "Wage":("RL Wage","Heuristic Wage")}
+    if df.empty:
+        return
+    metrics = {"Profit":  ("RL Profit",  "Heuristic Profit"),
+               "Workers": ("RL Workers", "Heuristic Workers"),
+               "Wage":    ("RL Wage",    "Heuristic Wage")}
     labels, pcts, colors = [], [], []
     for name, (rc, hc) in metrics.items():
-        rl_m = float(df[rc].mean()); h_m = float(df[hc].mean())
+        rl_m = float(df[rc].mean())
+        h_m  = float(df[hc].mean())
         pct  = (rl_m - h_m) / max(abs(h_m), 1.0) * 100
-        labels.append(name); pcts.append(pct)
+        labels.append(name)
+        pcts.append(pct)
         colors.append(BETTER if pct >= 0 else WORSE)
     fig, ax = plt.subplots(figsize=(6, 2.8), facecolor=BG)
     _ax(ax)
@@ -370,17 +385,21 @@ def Scorecard(model):
     ax.axvline(0, color=DIM, lw=1.5)
     xlim = max(abs(p) for p in pcts) * 1.7 if any(pcts) else 10
     for bar, p in zip(bars, pcts):
-        ha = "left" if p >= 0 else "right"; off = xlim * 0.03
-        ax.text(p+(off if p>=0 else -off), bar.get_y()+bar.get_height()/2,
-                f"{p:+.1f}%", ha=ha, va="center", color="white", fontsize=10, fontweight="bold")
-    ax.set_yticks(y); ax.set_yticklabels(labels, color=TEXT, fontsize=10)
+        ha  = "left" if p >= 0 else "right"
+        off = xlim * 0.03
+        ax.text(p + (off if p >= 0 else -off), bar.get_y() + bar.get_height() / 2,
+                f"{p:+.1f}%", ha=ha, va="center", color=TEXT, fontsize=10, fontweight="bold")
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, color=TEXT, fontsize=10)
     ax.set_xlim(-xlim, xlim)
-    ax.axvspan(0, xlim, color=BETTER, alpha=0.05); ax.axvspan(-xlim, 0, color=WORSE, alpha=0.05)
+    ax.axvspan(0, xlim, color=BETTER, alpha=0.05)
+    ax.axvspan(-xlim, 0, color=WORSE, alpha=0.05)
     ax.set_title(f"Cumulative RL Scorecard  (month {model._step})",
-                 color="white", fontsize=10, fontweight="bold")
+                 color=TEXT, fontsize=10, fontweight="bold")
     ax.set_xlabel("RL advantage vs heuristic (%)", color=TEXT, fontsize=9)
     plt.tight_layout(pad=0.4)
-    solara.FigureMatplotlib(fig); plt.close(fig)
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
 
 
 @solara.component
@@ -392,7 +411,7 @@ def FirmTable(model):
         mpl   = f.marginal_product_labor(f.productivity, labor, f.alpha) if labor > 0 else 0
         rows.append({"Firm": f"F{i}" + (" [RL]" if f is model.rl_firm else ""),
                      "Profit": round(f.profit, 0), "Workers": labor,
-                     "Wage": round(f.monthly_wage, 0), "VMPL": round(mpl*f.output_price, 0),
+                     "Wage": round(f.monthly_wage, 0), "VMPL": round(mpl * f.output_price, 0),
                      "Capital": round(f.capital, 1), "Vacancies": f.vacancies,
                      "Deficit Mo": getattr(f, "deficit_months", 0)})
     solara.Text(f"All Firms -- month {model._step}")
@@ -417,95 +436,146 @@ def WorkerTable(model):
 def SurvivalChart(model):
     update_counter.get()
     df = model.datacollector.get_model_vars_dataframe()
-    if len(df) < 2: return
+    if len(df) < 2:
+        return
     steps = np.arange(1, len(df)+1)
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 4), facecolor=BG,
-                                    gridspec_kw={"height_ratios":[2,1]})
-    _ax(ax1); _ax(ax2)
+                                    gridspec_kw={"height_ratios": [2, 1]})
+    _ax(ax1)
+    _ax(ax2)
     ax1.plot(steps, df["Active Firms"], color=BETTER, lw=2.0)
     ax1.set_ylabel("Active Firms", fontsize=8)
-    ax1.set_title("Market Health & RL Survival Pressure", color="white", fontsize=10, fontweight="bold")
-    ax2.fill_between(steps, 0, df["RL Deficit Months"], color=WORSE, alpha=0.5)
+    ax1.set_title("Market Health & RL Survival Pressure", color=TEXT, fontsize=10, fontweight="bold")
+    ax2.fill_between(steps, 0, df["RL Deficit Months"], color=WORSE, alpha=0.4)
     ax2.plot(steps, df["RL Deficit Months"], color=WORSE, lw=1.5)
-    ax2.set_ylabel("RL Deficit\nMonths", fontsize=8); ax2.set_xlabel("Month", fontsize=8)
+    ax2.set_ylabel("RL Deficit\nMonths", fontsize=8)
+    ax2.set_xlabel("Month", fontsize=8)
     plt.tight_layout(pad=0.4)
-    solara.FigureMatplotlib(fig); plt.close(fig)
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
 
-
-# Histogram / scatter components
-_COL_RL = "#e74c3c"; _COL_H = "#3498db"
 
 @solara.component
 def FirmSizeHistogram(model):
     update_counter.get()
     sizes = [len(f.current_workers) for f in model.firms]
     rl_sz = len(model.rl_firm.current_workers)
-    fig, ax = plt.subplots(figsize=(8,4)); _ax(ax)
-    if sizes: ax.hist(sizes, bins=20, color=_COL_H, edgecolor=GRID, label="Heuristic")
-    ax.axvline(rl_sz, color=_COL_RL, lw=2, linestyle="--", label=f"RL firm ({rl_sz} workers)")
-    ax.set_title("Distribution of Firm Sizes"); ax.set_xlabel("Workers"); ax.set_ylabel("Count")
-    ax.legend(fontsize=8); plt.tight_layout(); solara.FigureMatplotlib(fig); plt.close(fig)
+    fig, ax = plt.subplots(figsize=(8, 4), facecolor=BG)
+    _ax(ax)
+    if sizes:
+        ax.hist(sizes, bins=20, color=H_COL, edgecolor=GRID, alpha=0.75, label="All firms")
+    ax.axvline(rl_sz, color=RL_COL, lw=2, linestyle="--", label=f"RL firm ({rl_sz} workers)")
+    ax.set_title("Distribution of Firm Sizes", color=TEXT)
+    ax.set_xlabel("Workers")
+    ax.set_ylabel("Count")
+    ax.legend(fontsize=8, facecolor=BG, edgecolor=GRID, labelcolor=TEXT)
+    plt.tight_layout()
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
+
 
 @solara.component
 def FirmWageHistogram(model):
     update_counter.get()
     wages = [f.monthly_wage for f in model.firms if f.monthly_wage]
     rl_w  = model.rl_firm.monthly_wage
-    fig, ax = plt.subplots(figsize=(8,4)); _ax(ax)
-    if wages: ax.hist(wages, bins=20, color=_COL_H, edgecolor=GRID, label="Heuristic")
-    ax.axvline(rl_w, color=_COL_RL, lw=2, linestyle="--", label=f"RL firm ({rl_w:,})")
-    ax.set_title("Distribution of Firm Wages"); ax.set_xlabel("Monthly Wage (THB)"); ax.set_ylabel("Count")
-    ax.legend(fontsize=8); plt.tight_layout(); solara.FigureMatplotlib(fig); plt.close(fig)
+    fig, ax = plt.subplots(figsize=(8, 4), facecolor=BG)
+    _ax(ax)
+    if wages:
+        ax.hist(wages, bins=20, color=H_COL, edgecolor=GRID, alpha=0.75, label="All firms")
+    ax.axvline(rl_w, color=RL_COL, lw=2, linestyle="--", label=f"RL firm ({rl_w:,})")
+    ax.set_title("Distribution of Firm Wages", color=TEXT)
+    ax.set_xlabel("Monthly Wage (THB)")
+    ax.set_ylabel("Count")
+    ax.legend(fontsize=8, facecolor=BG, edgecolor=GRID, labelcolor=TEXT)
+    plt.tight_layout()
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
+
 
 @solara.component
 def FirmProfitHistogram(model):
     update_counter.get()
-    profits = [f.profit for f in model.firms]; rl_p = model.rl_firm.profit
-    fig, ax = plt.subplots(figsize=(8,4)); _ax(ax)
-    if profits: ax.hist(profits, bins=20, color=_COL_H, edgecolor=GRID, label="Heuristic")
-    ax.axvline(rl_p, color=_COL_RL, lw=2, linestyle="--", label=f"RL firm ({rl_p:,.0f})")
-    ax.set_title("Distribution of Firm Profits"); ax.set_xlabel("Profit (THB)"); ax.set_ylabel("Count")
-    ax.legend(fontsize=8); plt.tight_layout(); solara.FigureMatplotlib(fig); plt.close(fig)
+    profits = [f.profit for f in model.firms]
+    rl_p    = model.rl_firm.profit
+    fig, ax = plt.subplots(figsize=(8, 4), facecolor=BG)
+    _ax(ax)
+    if profits:
+        ax.hist(profits, bins=20, color=H_COL, edgecolor=GRID, alpha=0.75, label="All firms")
+    ax.axvline(rl_p, color=RL_COL, lw=2, linestyle="--", label=f"RL firm ({rl_p:,.0f})")
+    ax.set_title("Distribution of Firm Profits", color=TEXT)
+    ax.set_xlabel("Profit (THB)")
+    ax.set_ylabel("Count")
+    ax.legend(fontsize=8, facecolor=BG, edgecolor=GRID, labelcolor=TEXT)
+    plt.tight_layout()
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
+
 
 @solara.component
 def WageVsMPLScatter(model):
     update_counter.get()
     wages, vmpls, colors = [], [], []
     for f in model.firms:
-        if not f.monthly_wage: continue
+        if not f.monthly_wage:
+            continue
         labor = len(f.current_workers)
         mpl   = f.marginal_product_labor(f.productivity, labor, f.alpha)
-        wages.append(f.monthly_wage); vmpls.append(mpl * f.output_price)
-        colors.append(_COL_RL if f is model.rl_firm else _COL_H)
-    fig, ax = plt.subplots(figsize=(8,4)); _ax(ax)
+        wages.append(f.monthly_wage)
+        vmpls.append(mpl * f.output_price)
+        colors.append(RL_COL if f is model.rl_firm else H_COL)
+    fig, ax = plt.subplots(figsize=(8, 4), facecolor=BG)
+    _ax(ax)
     if wages:
         ax.scatter(vmpls, wages, c=colors, edgecolors=GRID, alpha=0.85, s=60, zorder=3)
-        lo, hi = min(min(vmpls), min(wages)), max(max(vmpls), max(wages))
-        ax.plot([lo,hi],[lo,hi], color=DIM, linestyle="--", lw=1, label="wage = VMPL")
-    ax.set_title("Wage vs Value of MPL"); ax.set_xlabel("VMPL"); ax.set_ylabel("Wage (THB)")
-    handles = [mpatches.Patch(color=_COL_RL, label="RL"), mpatches.Patch(color=_COL_H, label="Heuristic")]
-    ax.legend(handles=handles, fontsize=8); plt.tight_layout(); solara.FigureMatplotlib(fig); plt.close(fig)
+        lo = min(min(vmpls), min(wages))
+        hi = max(max(vmpls), max(wages))
+        ax.plot([lo, hi], [lo, hi], color=DIM, linestyle="--", lw=1, label="wage = VMPL")
+    ax.set_title("Wage vs Value of MPL", color=TEXT)
+    ax.set_xlabel("VMPL")
+    ax.set_ylabel("Wage (THB)")
+    handles = [mpatches.Patch(color=RL_COL, label="RL"),
+               mpatches.Patch(color=H_COL,  label="Heuristic")]
+    ax.legend(handles=handles, fontsize=8, facecolor=BG, edgecolor=GRID, labelcolor=TEXT)
+    plt.tight_layout()
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
+
 
 @solara.component
 def WorkerUtilityHistogram(model):
     update_counter.get()
-    utils = [w.utility_if_work(w.monthly_wage) if w.employed else w.utility_if_not_work() for w in model.workers]
-    fig, ax = plt.subplots(figsize=(9,4)); _ax(ax)
-    if utils: ax.hist(utils, bins=20, color="#9b59b6", edgecolor=GRID)
-    ax.set_title("Distribution of Worker Utility"); ax.set_xlabel("Utility"); ax.set_ylabel("Count")
-    plt.tight_layout(); solara.FigureMatplotlib(fig); plt.close(fig)
+    utils = [w.utility_if_work(w.monthly_wage) if w.employed else w.utility_if_not_work()
+             for w in model.workers]
+    fig, ax = plt.subplots(figsize=(9, 4), facecolor=BG)
+    _ax(ax)
+    if utils:
+        ax.hist(utils, bins=20, color=MAC_COL, edgecolor=GRID, alpha=0.75)
+    ax.set_title("Distribution of Worker Utility", color=TEXT)
+    ax.set_xlabel("Utility")
+    ax.set_ylabel("Count")
+    plt.tight_layout()
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
+
 
 @solara.component
 def WorkerWageHistogram(model):
     update_counter.get()
     wages = [w.monthly_wage for w in model.workers if w.employed and w.monthly_wage > 0]
-    fig, ax = plt.subplots(figsize=(9,4)); _ax(ax)
-    if wages: ax.hist(wages, bins=20, color="#1abc9c", edgecolor=GRID)
-    ax.set_title("Distribution of Worker Wages"); ax.set_xlabel("Monthly Wage (THB)"); ax.set_ylabel("Count")
-    plt.tight_layout(); solara.FigureMatplotlib(fig); plt.close(fig)
+    fig, ax = plt.subplots(figsize=(9, 4), facecolor=BG)
+    _ax(ax)
+    if wages:
+        ax.hist(wages, bins=20, color=BETTER, edgecolor=GRID, alpha=0.75)
+    ax.set_title("Distribution of Worker Wages", color=TEXT)
+    ax.set_xlabel("Monthly Wage (THB)")
+    ax.set_ylabel("Count")
+    plt.tight_layout()
+    solara.FigureMatplotlib(fig)
+    plt.close(fig)
 
 
-# ── make_plot_component charts ────────────────────────────────────────
+# ── Standard solara make_plot_component charts ────────────────────────
 
 chart_profit     = make_plot_component({"RL Profit": RL_COL, "Heuristic Profit": H_COL})
 chart_workers    = make_plot_component({"RL Workers": RL_COL, "Heuristic Workers": H_COL})
@@ -527,9 +597,9 @@ model_params = {
     "rental_rate_val":        Slider("Capital Rental Rate  (default 500)",  500,   50, 2000,   50),
     "alpha_param":            Slider("Labour Elasticity alpha (default 0.65)", 0.65, 0.20, 0.90, 0.05),
     # ── Labour market ─────────────────────────────────────────────────
-    "min_wage_val":           Slider("Min Wage THB  (default 7700)",       7700, 3000,15000,  100),
-    "worker_search_prob_val": Slider("Worker Search Prob %  (default 10)",   10,    1,   60,    1),
-    "seed_val":               Slider("Random Seed  (default 455)",          455,    0,  999,    1),
+    "min_wage_val":           Slider("Min Wage THB  (default 7700)",       7700, 3000, 15000,  100),
+    "worker_search_prob_val": Slider("Worker Search Prob %  (default 10)",   10,    1,    60,    1),
+    "seed_val":               Slider("Random Seed  (default 455)",          455,    0,   999,    1),
 }
 
 page = SolaraViz(
@@ -544,6 +614,7 @@ page = SolaraViz(
         chart_profit,
         chart_workers,
         WageBandChart,
+        chart_wage,
         chart_employment,
         SurvivalChart,
         FirmTable,
