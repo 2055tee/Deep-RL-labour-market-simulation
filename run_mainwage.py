@@ -1,5 +1,5 @@
-from min_wage_model import LaborMarketModel
-from min_wage_model import Worker, Firm
+from tee import LaborMarketModel
+from tee import Worker, Firm
 import pandas as pd
 import random
 import matplotlib.pyplot as plt
@@ -133,72 +133,60 @@ def plot_employment_vs_profit(df=None, min_wage_param_list=None):
 
 results = []
 all_data = []
-min_wage_param_list = range(300, 601, 50)
 
-for min_wage in min_wage_param_list:
+
+# for i in range(100):
     # Use a fixed seed for better comparison across different min_wage parameters
     # The 'seed' argument to LaborMarketModel will handle the model's random state
-    model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=min_wage, seed=42) 
+model = LaborMarketModel(N_workers=100, N_firms=10, min_wage=7700, seed=42) 
+
+for i in range(60):  # 24 steps per simulation
+    # print(f"************************Step {i+1} for min_wage {min_wage}************************")
+    model.step()
+        
+        # # collect all data at each step
+        # data = model.datacollector.get_model_vars_dataframe()
+        # data['min_wage'] = min_wage
+        # data['step'] = i + 1
+        # all_data.append(data)
+        
+        
+        
+        
+#     data = model.datacollector.get_model_vars_dataframe()
+#     final = data.iloc[-1]
     
-    for i in range(60):  # 24 steps per simulation
-        # print(f"************************Step {i+1} for min_wage {min_wage}************************")
-        model.step()
-        
-        # collect all data at each step
-        data = model.datacollector.get_model_vars_dataframe()
-        data['min_wage'] = min_wage
-        data['step'] = i + 1
-        all_data.append(data)
-        
-        
-        
-        
-    data = model.datacollector.get_model_vars_dataframe()
-    final = data.iloc[-1]
-    
-    # Collect all the final model-level metrics and the collected lists
-    results.append({
-        "min_wage": min_wage,
-        "employment_rate": final["EmploymentRate"],
-        "avg_wage": final["AverageWage"],
-        "avg_profit": final["AverageProfit"],
-        "avg_firm_size": final["AvgFirmSize"],
-        "avg_capital": final["AvgFirmCapital"],
-        "final_wages": final["AllEmployedWages"], # List of all employed worker wages at the final step
-        "final_profits": final["AllFirmProfits"], # List of all firm profits at the final step
-        "final_capitals": final["AllFirmCapitals"], # List of all firm capitals at the final step
-        "final_firm_sizes": final["AllFirmSizes"], # List of all firm sizes at the final step
-    })
+#     # Collect all the final model-level metrics and the collected lists
+#     results.append({
+#         "min_wage": min_wage,
+#         "employment_rate": final["EmploymentRate"],
+#         "avg_wage": final["AverageWage"],
+#         "avg_profit": final["AverageProfit"],
+#         "avg_firm_size": final["AvgFirmSize"],
+#         "avg_capital": final["AvgFirmCapital"],
+#         "final_wages": final["AllEmployedWages"], # List of all employed worker wages at the final step
+#         "final_profits": final["AllFirmProfits"], # List of all firm profits at the final step
+#         "final_capitals": final["AllFirmCapitals"], # List of all firm capitals at the final step
+#         "final_firm_sizes": final["AllFirmSizes"], # List of all firm sizes at the final step
+#     })
 
-df = pd.DataFrame(results)
-print("\n--- Final Results per Minimum Wage Parameter ---\n")
-print(df[['min_wage', 'employment_rate', 'avg_wage', 'avg_profit', 'avg_firm_size', 'avg_capital']])
+# df = pd.DataFrame(results)
+# print("\n--- Final Results per Minimum Wage Parameter ---\n")
+# print(df[['min_wage', 'employment_rate', 'avg_wage', 'avg_profit', 'avg_firm_size', 'avg_capital']])
 
-# --- GENERATE GRAPHS ---
-print("\n--- Generating Graphs ---\n")
+# # --- GENERATE GRAPHS ---
+# print("\n--- Generating Graphs ---\n")
 
-# 1. Employment Rate
-plot_employment_rate(df, min_wage_param_list)
+# # 1. Employment Rate
+# plot_employment_rate(df, min_wage_param_list)
 
-# 2. Wage Distribution (for selected min_wage values)
-plot_wage_distribution(df, min_wage_param_list)
+# # 2. Wage Distribution (for selected min_wage values)
+# plot_wage_distribution(df, min_wage_param_list)
 
-plot_firm_profit_distribution(df, min_wage_param_list)
+# plot_firm_profit_distribution(df, min_wage_param_list)
 
-# 3. Firm Profit and Capital (Average)
-plot_firm_metrics(df, min_wage_param_list)
+# # 3. Firm Profit and Capital (Average)
+# plot_firm_metrics(df, min_wage_param_list)
 
-# 4. Firm Size (Average)
-plot_firm_size(df, min_wage_param_list)
-
-# # 5. Worker Wage Distribution for a specific min_wage
-# # Tobe use when calibrated
-# plot_worker_wage_distribution(df, min_wage=300)
-# plot_worker_wage_distribution(df, min_wage=600)
-
-# # Combine all collected data into a single DataFrame
-# all_data_df = pd.concat(all_data, ignore_index=True)
-# all_data_df.to_csv("min_wage_simulation_data.csv", index=False)
-
-# # Plot Employment Rate vs Firm Profit over all steps
-# plot_employment_vs_profit(all_data_df)
+# # 4. Firm Size (Average)
+# plot_firm_size(df, min_wage_param_list)
