@@ -135,14 +135,14 @@ def _run_heuristic_episode(n_workers, n_firms, seed):
     sys.path.insert(0, str(ROOT))
     from min_wage_model import LaborMarketModel
 
-    buf = {k: [] for k in ["profit", "employ_pct", "mkt_wage", "workers", "active_n"]}
+    buf = {k: [] for k in ["profit", "employ_pct", "mkt_wage", "workers", "active_n", "avg_worker_utility"]}
 
     with contextlib.redirect_stdout(io.StringIO()):
         model = LaborMarketModel(N_workers=n_workers, N_firms=n_firms,
                                  min_wage=7700, seed=seed)
         for _ in range(N_STEPS):
             model.step()
-            firms  = model.firms   # current active firms
+            firms  = model.firms
             n_act  = len(firms)
             buf["profit"].append(
                 float(np.mean([f.profit for f in firms])) if firms else 0.0)
@@ -151,6 +151,14 @@ def _run_heuristic_episode(n_workers, n_firms, seed):
             buf["workers"].append(
                 float(np.mean([len(f.current_workers) for f in firms])) if firms else 0.0)
             buf["active_n"].append(n_act)
+
+            utils = []
+            for w in model.workers:
+                if w.employed:
+                    utils.append(w.utility_if_work(w.monthly_wage))
+                else:
+                    utils.append(w.utility_if_not_work())
+            buf["avg_worker_utility"].append(float(np.mean(utils)) if utils else 0.0)
 
     return {k: np.array(v[:N_STEPS]) for k, v in buf.items()}
 
@@ -396,6 +404,41 @@ def chart_wages_overview(h_res, rl_cache):
     _save(fig, OUT_C, "wages_overview.png")
 
 
+def chart_utility_overview(h_res, rl_cache):
+    """Market-wide worker utility: pure heuristic vs markets with AI firms."""
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5.5), facecolor=BG)
+    x = np.arange(1, N_STEPS + 1)
+
+    for ax, cfg in zip(axes, CONFIGS):
+        tag = cfg["tag"]
+        _ax(ax)
+
+        if tag in h_res:
+            hm, hs, _ = h_res[tag]
+            _band(ax, x, hm["avg_worker_utility"], hs["avg_worker_utility"],
+                  COL["heuristic"], LABEL["heuristic"], lw=2.0)
+
+        for key in ("solo", "cooperative", "competitive"):
+            r = rl_cache.get(key)
+            if r and tag in r:
+                rm, rs, _ = r[tag]
+                _band(ax, x, rm["avg_worker_utility"], rs["avg_worker_utility"],
+                      COL[key], LABEL[key], lw=1.8)
+
+        ax.set_title(f"{cfg['label']}\n{cfg['subtitle']}", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Month", fontsize=9)
+        if ax is axes[0]:
+            ax.set_ylabel("Avg Worker Utility (Cobb-Douglas)", fontsize=9)
+        ax.legend(fontsize=8, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
+
+    fig.suptitle(
+        "WORKER UTILITY COMPARISON  -  How Does AI Presence Affect Worker Wellbeing?\n"
+        "Shows market-wide average Cobb-Douglas utility (employed + unemployed workers)",
+        color=WHITE, fontsize=13, fontweight="bold", y=1.02)
+    plt.tight_layout(pad=1.2)
+    _save(fig, OUT_C, "utility_overview.png")
+
+
 def chart_scorecard_overview(h_res, rl_cache):
     """
     The big-picture comparison: grouped bar chart.
@@ -479,9 +522,10 @@ def chart_impact_of_ai(h_res, rl_cache):
     short = {"small": "Small", "medium": "Medium", "large": "Large"}
 
     metrics = [
-        ("Firm Profit",      "profit",     "rl_profit"),
-        ("Employment Rate",  "employ_pct", "employ_pct"),
-        ("Market Wage",      "mkt_wage",   "mkt_wage"),
+        ("Firm Profit",      "profit",              "rl_profit"),
+        ("Employment Rate",  "employ_pct",          "employ_pct"),
+        ("Market Wage",      "mkt_wage",            "mkt_wage"),
+        ("Worker Utility",   "avg_worker_utility",  "avg_worker_utility"),
     ]
 
     rl_keys = [
@@ -490,7 +534,7 @@ def chart_impact_of_ai(h_res, rl_cache):
         ("competitive", LABEL["competitive"], COL["competitive"]),
     ]
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5.5), facecolor=BG)
+    fig, axes = plt.subplots(1, 4, figsize=(24, 5.5), facecolor=BG)
 
     for ax, (m_label, h_key, rl_key) in zip(axes, metrics):
         _ax(ax)
@@ -522,8 +566,7 @@ def chart_impact_of_ai(h_res, rl_cache):
         ax.set_xticks(x)
         ax.set_xticklabels([short[t] for t in tags], color=TEXT, fontsize=9)
         ax.set_title(m_label, color=WHITE, fontsize=11, fontweight="bold")
-        if ax is axes[0]:
-            ax.set_ylabel("Change vs Pure Rule-Based (%)", fontsize=9)
+        ax.set_ylabel("Change vs Pure Rule-Based (%)", fontsize=9)
         ax.legend(fontsize=8, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
 
     fig.suptitle(
@@ -572,6 +615,7 @@ else:
     chart_profit_overview(h_res, rl_cache)
     chart_employment_overview(h_res, rl_cache)
     chart_wages_overview(h_res, rl_cache)
+    chart_utility_overview(h_res, rl_cache)
     chart_scorecard_overview(h_res, rl_cache)
     chart_impact_of_ai(h_res, rl_cache)
 

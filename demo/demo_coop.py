@@ -45,11 +45,11 @@ except Exception as _e:
 N_RL_FIRMS = 3
 
 # ── Palette ───────────────────────────────────────────────────────────
-BG      = "#0f0f1a"
-PANEL   = "#16213e"
-GRID    = "#1e2a4a"
-TEXT    = "#d0d0e8"
-DIM     = "#888899"
+BG      = "white"
+PANEL   = "#f0f0f0"
+GRID    = "#cccccc"
+TEXT    = "black"
+DIM     = "#555555"
 BETTER  = "#00c853"
 WORSE   = "#ff1744"
 WARN    = "#ffab40"
@@ -277,7 +277,7 @@ def _ax(ax):
     ax.tick_params(colors=TEXT, labelsize=9)
     for sp in ax.spines.values(): sp.set_edgecolor(GRID)
     ax.xaxis.label.set_color(TEXT); ax.yaxis.label.set_color(TEXT)
-    ax.title.set_color("white"); ax.grid(color=GRID, alpha=0.28, lw=0.5)
+    ax.title.set_color(TEXT); ax.grid(color=GRID, alpha=0.28, lw=0.5)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -323,12 +323,12 @@ def Scorecard(model):
     for bar, p in zip(bars, pcts):
         ha = "left" if p >= 0 else "right"; off = xlim * 0.03
         ax.text(p+(off if p>=0 else -off), bar.get_y()+bar.get_height()/2,
-                f"{p:+.1f}%", ha=ha, va="center", color="white", fontsize=10, fontweight="bold")
+                f"{p:+.1f}%", ha=ha, va="center", color=TEXT, fontsize=10, fontweight="bold")
     ax.set_yticks(y); ax.set_yticklabels(labels, color=TEXT, fontsize=10)
     ax.set_xlim(-xlim, xlim)
     ax.axvspan(0, xlim, color=BETTER, alpha=0.05); ax.axvspan(-xlim, 0, color=WORSE, alpha=0.05)
     ax.set_title(f"Cumulative RL Scorecard  [Cooperative]  (month {m._step})",
-                 color="white", fontsize=10, fontweight="bold")
+                 color=TEXT, fontsize=10, fontweight="bold")
     ax.set_xlabel("RL avg vs Heuristic avg (%)", color=TEXT, fontsize=9)
     plt.tight_layout(pad=0.4); solara.FigureMatplotlib(fig); plt.close(fig)
 
@@ -373,7 +373,7 @@ def RLObsPanels(model):
             ax.text(v+(0.04 if v>=0 else -0.04), i, f"{v:.2f}",
                     va="center", ha=ha, color=TEXT, fontsize=7)
     fig.suptitle(f"RL Policy Observations  (month {m._step})",
-                 color="white", fontsize=11, fontweight="bold")
+                 color=TEXT, fontsize=11, fontweight="bold")
     plt.tight_layout(pad=0.4); solara.FigureMatplotlib(fig); plt.close(fig)
 
 
@@ -385,7 +385,7 @@ def ActionGrid(model):
     fig, axes = plt.subplots(N_RL_FIRMS, 1, figsize=(11, 1.2*N_RL_FIRMS+0.8), facecolor=BG)
     if N_RL_FIRMS == 1: axes = [axes]
     fig.suptitle(f"RL Firm Actions -- Last 72 months  [Cooperative]",
-                 color="white", fontsize=9, fontweight="bold", y=1.01)
+                 color=TEXT, fontsize=9, fontweight="bold", y=1.01)
     for idx, ax in enumerate(axes):
         ax.set_facecolor(PANEL)
         for sp in ax.spines.values(): sp.set_edgecolor(GRID)
@@ -427,7 +427,7 @@ def ActionPieGrid(model):
         ax.set_title(f"F{idx}  ({len(m.actions_each[idx])} steps)",
                      color=RL_FIRM_COLORS[idx], fontsize=9, fontweight="bold")
     fig.suptitle("Action Distribution [Cooperative]",
-                 color="white", fontsize=11, fontweight="bold")
+                 color=TEXT, fontsize=11, fontweight="bold")
     plt.tight_layout(pad=0.3); solara.FigureMatplotlib(fig); plt.close(fig)
 
 
@@ -449,13 +449,13 @@ def RLWageSpreadChart(model):
     ax1.plot(steps, df["Heuristic Profit"], color=H_COL, lw=1.5, linestyle="--", label="Heuristic avg")
     ax1.set_ylabel("Profit (THB)", fontsize=8)
     ax1.set_title("Individual RL Firm Profits  [Cooperative]",
-                  color="white", fontsize=10, fontweight="bold")
+                  color=TEXT, fontsize=10, fontweight="bold")
     ax1.legend(fontsize=8, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
     ax2.fill_between(steps, 0, df["Wage Spread (RL)"], color=WARN, alpha=0.5)
     ax2.plot(steps, df["Wage Spread (RL)"], color=WARN, lw=1.5)
     ax2.set_ylabel("RL Wage\nSpread (THB)", fontsize=8); ax2.set_xlabel("Month", fontsize=8)
     ax2.set_title("Wage Spread Among RL Firms  (should stay low in cooperative mode)",
-                  color="white", fontsize=9)
+                  color=TEXT, fontsize=9)
     plt.tight_layout(pad=0.4); solara.FigureMatplotlib(fig); plt.close(fig)
 
 
@@ -472,7 +472,7 @@ def WageBandChart(model):
     ax.plot(steps, df["Market Wage"],  color=H_COL,  lw=1.8, label="Market mean", linestyle="--")
     ax.plot(steps, df["RL Avg Wage"],  color=RL_COL, lw=2.2, label="RL avg wage")
     ax.set_xlabel("Month", fontsize=8); ax.set_ylabel("Wage (THB)", fontsize=8)
-    ax.set_title("RL Avg Wage vs Market Band", color="white", fontsize=10, fontweight="bold")
+    ax.set_title("RL Avg Wage vs Market Band", color=TEXT, fontsize=10, fontweight="bold")
     ax.legend(fontsize=8, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
     plt.tight_layout(pad=0.4); solara.FigureMatplotlib(fig); plt.close(fig)
 
@@ -489,7 +489,7 @@ def SurvivalChart(model):
     _ax(ax1); _ax(ax2)
     ax1.plot(steps, df["Active Firms"], color=BETTER, lw=2.0)
     ax1.set_ylabel("Active Firms", fontsize=8)
-    ax1.set_title("Market Health", color="white", fontsize=10, fontweight="bold")
+    ax1.set_title("Market Health", color=TEXT, fontsize=10, fontweight="bold")
     ax2.fill_between(steps, 0, df["RL Avg Deficit"], color=WORSE, alpha=0.5)
     ax2.plot(steps, df["RL Avg Deficit"], color=WORSE, lw=1.5)
     ax2.set_ylabel("RL Avg\nDeficit Mo", fontsize=8); ax2.set_xlabel("Month", fontsize=8)

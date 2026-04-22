@@ -38,11 +38,11 @@ except Exception as _e:
 from model_rl import LaborMarketModel
 
 # ── Palette ───────────────────────────────────────────────────────────
-BG      = "#0f0f1a"
-PANEL   = "#16213e"
-GRID    = "#1e2a4a"
-TEXT    = "#d0d0e8"
-DIM     = "#888899"
+BG      = "white"
+PANEL   = "#f0f0f0"
+GRID    = "#cccccc"
+TEXT    = "black"
+DIM     = "#555555"
 BETTER  = "#00c853"
 WORSE   = "#ff1744"
 WARN    = "#ffab40"
@@ -207,7 +207,7 @@ def _ax(ax):
     ax.tick_params(colors=TEXT, labelsize=9)
     for sp in ax.spines.values(): sp.set_edgecolor(GRID)
     ax.xaxis.label.set_color(TEXT); ax.yaxis.label.set_color(TEXT)
-    ax.title.set_color("white"); ax.grid(color=GRID, alpha=0.28, lw=0.5)
+    ax.title.set_color(TEXT); ax.grid(color=GRID, alpha=0.28, lw=0.5)
 
 def _ood_msgs(params):
     msgs = []
@@ -256,7 +256,7 @@ def RLObsPanel(model):
     ax.set_xlabel("Observation value (clipped to +/-1.5)", fontsize=8, color=TEXT)
     act_name = ACT_NAMES[model.rl_action] if model.actions else "—"
     ax.set_title(f"RL Policy Observation  |  last action: {act_name}  (month {model._step})",
-                 fontsize=10, fontweight="bold", color="white")
+                 fontsize=10, fontweight="bold", color=TEXT)
     for i, v in enumerate(obs):
         ha = "left" if v >= 0 else "right"
         ax.text(v + (0.04 if v >= 0 else -0.04), i, f"{v:.2f}",
@@ -282,7 +282,7 @@ def ActionBar(model):
     ax.set_xlim(0, len(last)); ax.set_ylim(0, 1); ax.set_yticks([])
     ax.set_xlabel(f"Last {len(last)} months  (month {model._step})", color=TEXT, fontsize=8)
     ax.set_title("RL Firm -- Recent Actions  (dotted = annual wage window)",
-                 color="white", fontsize=9, fontweight="bold", pad=4)
+                 color=TEXT, fontsize=9, fontweight="bold", pad=4)
     patches = [mpatches.Patch(color=ACT_COLORS[k], label=ACT_NAMES[k]) for k in range(7)]
     ax.legend(handles=patches, ncol=7, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT,
               fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.6))
@@ -309,7 +309,7 @@ def ActionPieChart(model):
               facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT, fontsize=8,
               bbox_to_anchor=(0.5, -0.18))
     ax.set_title(f"Action Distribution  ({len(model.actions)} steps)",
-                 color="white", fontsize=10, fontweight="bold")
+                 color=TEXT, fontsize=10, fontweight="bold")
     plt.tight_layout(pad=0.3)
     solara.FigureMatplotlib(fig); plt.close(fig)
 
@@ -343,7 +343,7 @@ def WageBandChart(model):
     ax.plot(steps, df["RL Wage"],     color=RL_COL, lw=2.2, label="RL firm wage")
     ax.set_xlabel("Month", fontsize=8); ax.set_ylabel("Wage (THB)", fontsize=8)
     ax.set_title("RL Wage vs Market Band  (fill = min-max range)",
-                 color="white", fontsize=10, fontweight="bold")
+                 color=TEXT, fontsize=10, fontweight="bold")
     ax.legend(fontsize=8, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
     plt.tight_layout(pad=0.4)
     solara.FigureMatplotlib(fig); plt.close(fig)
@@ -372,12 +372,12 @@ def Scorecard(model):
     for bar, p in zip(bars, pcts):
         ha = "left" if p >= 0 else "right"; off = xlim * 0.03
         ax.text(p+(off if p>=0 else -off), bar.get_y()+bar.get_height()/2,
-                f"{p:+.1f}%", ha=ha, va="center", color="white", fontsize=10, fontweight="bold")
+                f"{p:+.1f}%", ha=ha, va="center", color=TEXT, fontsize=10, fontweight="bold")
     ax.set_yticks(y); ax.set_yticklabels(labels, color=TEXT, fontsize=10)
     ax.set_xlim(-xlim, xlim)
     ax.axvspan(0, xlim, color=BETTER, alpha=0.05); ax.axvspan(-xlim, 0, color=WORSE, alpha=0.05)
     ax.set_title(f"Cumulative RL Scorecard  (month {model._step})",
-                 color="white", fontsize=10, fontweight="bold")
+                 color=TEXT, fontsize=10, fontweight="bold")
     ax.set_xlabel("RL advantage vs heuristic (%)", color=TEXT, fontsize=9)
     plt.tight_layout(pad=0.4)
     solara.FigureMatplotlib(fig); plt.close(fig)
@@ -424,7 +424,7 @@ def SurvivalChart(model):
     _ax(ax1); _ax(ax2)
     ax1.plot(steps, df["Active Firms"], color=BETTER, lw=2.0)
     ax1.set_ylabel("Active Firms", fontsize=8)
-    ax1.set_title("Market Health & RL Survival Pressure", color="white", fontsize=10, fontweight="bold")
+    ax1.set_title("Market Health & RL Survival Pressure", color=TEXT, fontsize=10, fontweight="bold")
     ax2.fill_between(steps, 0, df["RL Deficit Months"], color=WORSE, alpha=0.5)
     ax2.plot(steps, df["RL Deficit Months"], color=WORSE, lw=1.5)
     ax2.set_ylabel("RL Deficit\nMonths", fontsize=8); ax2.set_xlabel("Month", fontsize=8)
