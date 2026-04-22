@@ -177,6 +177,7 @@ METRICS = [
     "rl_f0_profit", "rl_f1_profit", "rl_f2_profit",
     "rl_wage_spread",
     "ai_wins",   # 1.0 if AI profit > heuristic profit this step
+    "avg_worker_utility",  # average utility across all workers (employed + unemployed)
 ]
 
 
@@ -235,6 +236,15 @@ def _collect(env, policy, is_multi, seed):
         buf["rl_wage_spread"].append(
             float(max(rl_wages) - min(rl_wages)) if len(rl_wages) > 1 else 0.0)
         buf["ai_wins"].append(1.0 if rl_p > h_p else 0.0)
+
+        # Average worker utility across all workers (employed + unemployed)
+        utils = []
+        for w in model.workers:
+            if w.employed:
+                utils.append(w.utility_if_work(w.monthly_wage))
+            else:
+                utils.append(w.utility_if_not_work())
+        buf["avg_worker_utility"].append(float(np.mean(utils)) if utils else 0.0)
 
     return {k: np.array(v[:N_STEPS]) for k, v in buf.items()}
 
@@ -607,6 +617,54 @@ def chart_scorecard(results, outdir, scenario_name, ai_color):
 # Chart: Workers Overview  (cross-scenario comparison → benchmark/comparison/)
 # ─────────────────────────────────────────────────────────────────────
 
+def chart_comparison_utility(all_results, outdir):
+    """
+    Cross-scenario comparison: average worker utility across all AI models.
+    Saved to benchmark/comparison/utility_overview.png
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(17, 5.5), facecolor=BG)
+    x = np.arange(1, N_STEPS + 1)
+
+    SCENARIO_ORDER = [
+        ("solo",        "Solo AI"),
+        ("cooperative", "Cooperative AI"),
+        ("competitive", "Competitive AI"),
+    ]
+
+    for ax, cfg in zip(axes, CONFIGS):
+        tag = cfg["tag"]
+        _ax(ax)
+
+        for key, label in SCENARIO_ORDER:
+            if key not in all_results or tag not in all_results[key]:
+                continue
+            mean, std, _ = all_results[key][tag]
+            _band(ax, x, mean["avg_worker_utility"], std["avg_worker_utility"],
+                  AI_COL[key], label, lw=2.0)
+
+        ax.set_title(f"{cfg['label']}\n{cfg['subtitle']}", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Month", fontsize=9)
+        if ax is axes[0]:
+            ax.set_ylabel("Average Worker Utility", fontsize=9)
+        ax.legend(fontsize=8.5, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT)
+
+        lines = []
+        for key, label in SCENARIO_ORDER:
+            if key in all_results and tag in all_results[key]:
+                avg = all_results[key][tag][2]["avg_worker_utility"]["mean"]
+                lines.append(f"{label.split()[0]}: {avg:.3f}")
+        if lines:
+            _note(ax, "\n".join(lines), color=TEXT)
+
+    fig.suptitle(
+        "ALL MODELS  ·  Average Worker Utility\n"
+        f"Cobb-Douglas utility for all workers (employed + unemployed)  —  "
+        f"mean ± 1 std across {N_SEEDS} simulations",
+        color=WHITE, fontsize=13, fontweight="bold", y=1.02)
+    plt.tight_layout(pad=1.2)
+    _save(fig, outdir, "utility_overview.png")
+
+
 def chart_comparison_profit(all_results, outdir):
     """
     Cross-scenario comparison: monthly profit for all AI models + rule-based baseline.
@@ -892,6 +950,7 @@ if __name__ == "__main__":
     chart_comparison_employment(all_results, comparison_dir)
     chart_comparison_wages(all_results, comparison_dir)
     chart_comparison_workers(all_results, comparison_dir)
+    chart_comparison_utility(all_results, comparison_dir)
 
     # ── Text summary table ───────────────────────────────────────────
     print(f"\n{'='*80}")

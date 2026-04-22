@@ -1,5 +1,5 @@
-from tee import LaborMarketModel
-from tee import Worker, Firm
+from min_wage_model import LaborMarketModel
+from min_wage_model import Worker, Firm
 import pandas as pd
 import random
 import matplotlib.pyplot as plt
